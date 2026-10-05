@@ -6,6 +6,8 @@ startup scripts, and a pinned source submodule. Store models and secrets separat
 
 ## Saved configuration
 
+See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limits.
+
 - Strata v0.1.39: `6f32ec070f23ced9f50e704d854d775da52591ab`,
   from [Niko1221/Strata](https://github.com/Niko1221/Strata).
 - CUDA 13.0; sm_86 build; vision disabled.

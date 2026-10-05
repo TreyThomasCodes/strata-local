@@ -7,6 +7,7 @@ RTX 3090s. It stores deployment code, not models or secrets.
 
 - `compose.yaml` defines the server, power-policy service, GPU access, and mounts.
 - `config/strata-iq3_s.json` holds the saved engine settings and container paths.
+- `SETTINGS.md` records operator rationales, test evidence, and tuning limits.
 - `docker/entrypoint.py` validates the key and GPU UUIDs, writes runtime config,
   and starts the server.
 - `docker/power-policy.py` enforces UUID-bound power caps and checks readback.
@@ -64,4 +65,5 @@ Upgrades also need quality, cache-switching, and long-context tests.
 Use short, direct sentences. Keep articles and technical terms exact. Use the
 pattern: the thing acts for a reason; then give the next step. Fragments are fine
 when clear. Cut filler, pleasantries, and hedging. Preserve code blocks during
-prose-only edits. State validation limits as facts.
+prose-only edits. State validation limits as facts. Separate operator rationale
+from measured results. Ask for missing rationales; never invent them.
