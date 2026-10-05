@@ -151,3 +151,9 @@ tokens and returned the same deterministic answer. The test did not measure
 sustained multi-client or long-context cache performance. This portable Compose
 wrapper has static/unit validation only. Verify a clean-machine build and live
 deployment. Creating the wrapper does not change the original running stack.
+
+## License
+
+This deployment wrapper uses the [MIT License](LICENSE).
+Strata retains its [upstream license](vendor/Strata/LICENSE).
+Model artifacts have separate licenses; this license does not cover them.
