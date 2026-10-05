@@ -1,0 +1,101 @@
+name: strata-local
+
+x-image: &image
+  image: strata-local:0.1.39
+  build:
+    context: ./vendor/Strata
+    args:
+      CUDA_ARCHITECTURES: "86"
+      BUILD_VISION: "0"
+
+x-devices: &devices
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          device_ids:
+            - ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
+            - ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+          capabilities: [gpu]
+
+x-policy: &policy
+  PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
+  PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+  PRIMARY_POWER_W: ${PRIMARY_POWER_W:-300}
+  PEER_POWER_W: ${PEER_POWER_W:-350}
+
+services:
+  power-policy:
+    <<: *image
+    init: true
+    restart: unless-stopped
+    cap_drop: [ALL]
+    cap_add: [SYS_ADMIN]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    read_only: true
+    environment:
+      <<: *policy
+      NVIDIA_DRIVER_CAPABILITIES: utility
+    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/power-policy.py"]
+    volumes:
+      - ./docker/power-policy.py:/deployment/power-policy.py:ro
+    deploy: *devices
+    healthcheck:
+      test: ["CMD", "/opt/strata/.venv/bin/python", "/deployment/power-policy.py", "--check"]
+      interval: 10s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    logging:
+      options: {max-size: "1m", max-file: "2"}
+
+  strata:
+    <<: *image
+    init: true
+    restart: unless-stopped
+    depends_on:
+      power-policy:
+        condition: service_healthy
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    ports:
+      - "${STRATA_BIND_HOST:-127.0.0.1}:${STRATA_PORT:-8080}:8080"
+    environment:
+      PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
+      PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/entrypoint.py"]
+    secrets: [strata_api_key]
+    volumes:
+      - type: bind
+        source: ./config/strata-iq3_s.json
+        target: /config/strata-iq3_s.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${STRATA_DATA_DIR:?Set STRATA_DATA_DIR in .env}
+        target: /models-data
+        read_only: true
+        bind: {create_host_path: false}
+      - ./docker/entrypoint.py:/deployment/entrypoint.py:ro
+      - strata-state:/var/lib/strata
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    deploy: *devices
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10m
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+secrets:
+  strata_api_key:
+    file: ${STRATA_API_KEY_FILE:?Set STRATA_API_KEY_FILE in .env}
+
+volumes:
+  strata-state:

@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+secrets/
+backups/
+models-data/
+*.log
+__pycache__/
+*.pyc

@@ -1,0 +1,3 @@
+[submodule "vendor/Strata"]
+	path = vendor/Strata
+	url = https://github.com/Niko1221/Strata.git
