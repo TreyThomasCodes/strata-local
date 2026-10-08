@@ -3,6 +3,7 @@
   "cwd": "/opt/strata",
   "tokenizer": "/models-data/packs/iq3_s/tokenizer",
   "model_name": "qwen3.8-flash-next-iq3_s",
+  "parallel": 2,
   "lib_dirs": ["/usr/local/cuda/lib64"],
   "args": [
     "--pack", "/models-data/packs/iq3_s",
@@ -21,6 +22,7 @@
     "--peer-device", "1",
     "--peer-reserve-mib", "3072",
     "--conversation-cache-mib", "16384",
-    "--conversation-cache-slots", "8"
+    "--conversation-cache-slots", "8",
+    "--batch-mtp"
   ]
 }

@@ -17,18 +17,23 @@ See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limi
 - Automatic expert cache/prefill; MTP4; PCIe fraction .20; draft confidence .70.
 - Peer reserve 3072 MiB; normal prompt checkpoints enabled.
 - Conversation parking: 16384 MiB host-RAM budget; up to 8 parked conversations.
-  Requests execute serially. The budget is a ceiling, not an upfront allocation.
+  The budget is a ceiling, not an upfront allocation.
+- Accepted concurrency baseline: `parallel: 2` in peer mode, with `--batch-mtp`.
+  Batch-MTP improved two-client aggregate throughput 19% narrative / 26% code
+  over plain batching in a small peer-mode screen; broad validation remains open.
 - Authentication required, including on the default loopback binding.
 
-The engine settings match the original production deployment. The source pin
-is upgraded to v0.1.40.3; the build, server tests, authenticated smoke checks,
-cache switching and 90K/240K recall passed. Both services use the locally built
-v0.1.40.3 image; the engine reports 0.1.40.3. A fresh matched two-boot comparison
-against v0.1.40.1 measured +1.9% narrative and +3.7% code decode; cold prefill
-and cached long requests were effectively unchanged. Full quality, concurrency
-and sustained-load validation remain pending. See SETTINGS.md for the
-version-specific results and limits. Builds are not guaranteed bit-for-bit
-identical: the upstream Dockerfile uses a tagged CUDA
+Original engine settings are retained except for the accepted two-slot
+concurrency and batch-MTP baseline. The source pin is v0.1.40.3; the build, server tests,
+authenticated smoke checks, cache switching and 90K/240K recall passed. Both services use the locally built
+v0.1.40.3 image; the engine reports 0.1.40.3. With serial settings, a fresh matched
+two-boot comparison against v0.1.40.1 measured +1.9% narrative and +3.7% code
+decode; cold prefill and cached long requests were effectively unchanged.
+Plain two-slot batching improved responsiveness but cost aggregate throughput.
+The subsequent batch-MTP trial recovered speed; these are separate comparisons.
+Full quality, broader concurrency and sustained-load validation remain pending.
+See SETTINGS.md for the version-specific results and limits. Builds are not
+guaranteed bit-for-bit identical: the upstream Dockerfile uses a tagged CUDA
 base and mutable dependencies. Native CPU build defaults require a rebuild on
 the destination rig.
 
@@ -112,8 +117,10 @@ must not share these cards or the host port.
 
 Verify health reports `loaded: true`, `max_context: 262144`, and `api_key: true`.
 Test an authenticated completion and `/metrics`. Confirm engine version 0.1.40.3,
-conversation cache enabled, budget 16384 MiB, and 8 slots. Use API base URL
-`http://127.0.0.1:8080/v1` and model `qwen3.8-flash-next-iq3_s`.
+conversation cache enabled, budget 16384 MiB, and 8 parked slots. Confirm
+`/v1/status` reports `concurrency.serving: 2`; active and parked slots differ.
+Use API base URL `http://127.0.0.1:8080/v1` and model
+`qwen3.8-flash-next-iq3_s`.
 Check UUID-bound power caps with `nvidia-smi`.
 
 ## Security and operations
@@ -177,7 +184,23 @@ A separate fresh matched A/B against v0.1.40.1 measured +1.9% narrative and
 +3.7% code decode with unchanged settings. Cold prefill, cached-tail replay and
 long-request wall times were effectively unchanged; eight recall checks passed.
 See [SETTINGS.md](SETTINGS.md#matched-v01401v01403-ab-2026-10-07). Full quality,
-concurrency, sustained-load and clean-machine checks remain pending.
+broader concurrency, sustained-load and clean-machine checks remain pending.
+
+On 2026-10-08, the peer-mode `parallel: 2` trial passed two-client, cache,
+long/short overlap, correctness and cancellation smoke checks. Solo speed fell
+about 1–2%; aggregate two-client throughput fell 7% narrative / 16% code.
+The later stream started in about 0.5–0.6 s rather than 4–5 s. During matched
+90K ingestion, the short request's first token improved from 34.8 s to 6.2 s;
+the long request took longer. Two slots were retained, with all other settings
+fixed at this stage. See [SETTINGS.md](SETTINGS.md#peer-mode-parallel2-trial-2026-10-08).
+
+A later `--batch-mtp` peer trial improved two-client aggregate throughput
+108.9 → 129.5 tok/s narrative and 109.6 → 138.2 tok/s code. Activation, cache,
+overlap, correctness and cancellation smoke checks passed. Batch-MTP remains
+enabled with two slots as the operator-approved baseline. Upstream documents
+single-GPU support; this limited
+peer test is not broad compatibility or quality validation. See
+[SETTINGS.md](SETTINGS.md#peer-mode-batch-mtp-trial-2026-10-08).
 
 The original rig's ignored `.env` sets `COMPOSE_PROJECT_NAME=strata` to retain
 the existing `strata_strata-state` volume and preserves its authenticated LAN

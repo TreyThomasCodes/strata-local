@@ -125,8 +125,8 @@ override is set. Parking depends on prompt caching; disabling checkpoints also
 disables parking. See the pinned [conversation-cache details](vendor/Strata/docs/DETAILS.md).
 
 **Parking avoids repeated full prefill when conversations alternate.** The
-operator enabled it for multiple ongoing chats or agent conversations. Requests
-still execute one at a time; parking is not parallel inference.
+operator enabled it for multiple ongoing chats or agent conversations. Parking
+is separate from active concurrency; the later `parallel: 2` trial is below.
 
 - `--conversation-cache-mib 16384`: a 16 GiB host-RAM ceiling, not an upfront
   allocation or a VRAM budget.
@@ -144,9 +144,11 @@ The older performance and quality matrices ran with parking disabled.
 ## Build and version
 
 **Strata v0.1.40.3 is pinned; build, server tests, live upgrade checks and a
-matched two-boot baseline comparison passed.** Engine settings remain unchanged;
-concurrency and new opt-ins remain off. The engine reports 0.1.40.3. Full quality,
-concurrency and sustained-load validation for this pin remain pending.
+matched two-boot serial baseline comparison passed.** Later peer-mode trials
+now enable two active slots and batch-MTP. The operator accepted this as the
+new baseline. All other engine settings remain unchanged; other new opt-ins
+remain off. The engine reports 0.1.40.3. Full
+quality, broader concurrency and sustained-load validation remain pending.
 
 The v0.1.40.1 quality-screen and matched two-boot results below remain specific
 to that version. The .40.3 upgrade includes default verify-window improvements,
@@ -162,6 +164,134 @@ better model quality. All eight long-context recall checks passed. (E8)
 CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
+
+### Peer-mode batch-MTP trial (2026-10-08)
+
+The operator asked to try batch-MTP after the two-slot peer trial. Only
+`--batch-mtp` was added; parallel=2, topology, caps, reserve, KV and parking
+stayed fixed. After the throughput gain and successful smoke checks, the
+operator accepted parallel=2 plus batch-MTP as the new baseline. Acceptance
+does not remove the validation limits below. Upstream documents single-GPU support; this screen
+establishes limited compatibility on this rig, not general peer support. (E14)
+
+| Metric | Plain two-slot batch | Batch-MTP two-slot |
+| --- | ---: | ---: |
+| Narrative aggregate, tok/s | 108.86 | 129.51 |
+| Code aggregate, tok/s | 109.61 | 138.21 |
+| Narrative per-stream decode, tok/s | 56.84 | 68.69 |
+| Code per-stream decode, tok/s | 57.38 | 73.49 |
+| Solo narrative decode, tok/s | 121.35 | 119.44 |
+| Solo code decode, tok/s | 136.09 | 132.63 |
+| Later stream first token, narrative, median s | 0.54 | 0.58 |
+| Later stream first token, code, median s | 0.62 | 0.55 |
+
+Aggregate improved 19.0%/26.1%; every scored MTP pair exceeded every scored
+plain pair. Pair aggregate CV was 0.73/0.75% narrative and 0.89/1.21% code.
+Solo observations fell 1.6%/2.5%, small relative to within-arm CV of 2.47/3.81%
+and 3.26/5.39%; this is not a firm causal penalty estimate. First-token latency
+was effectively similar. Do not combine these figures with older serial runs
+to claim a direct matched comparison against serial execution.
+
+Each arm was a fresh boot on .40.3, plain then MTP, with four scored solo streams
+and three scored two-client pairs per shape after warmups. Prompts match E13,
+with 512-token output caps and .6/.95/top_k20/min_p0 sampling, thinking off.
+Runtime JSON differs only by the appended flag. Plain/MTP arms completed
+33/33 and 41/41 expected requests on authenticated loopback, with normal API
+traffic excluded; no restart or counter reset occurred within an arm.
+
+Activation was proved by >2 emitted rows/window with two slots (up to 3.60 in
+the activation check), requiring accepted MTP proposals, not just a requested
+flag. Both slots were observed decoding simultaneously. Cache switching restored
+2152 tokens and the expected word. Arithmetic, sorting and JSON checks passed
+beside a background stream. Disconnecting one client did not stop or contaminate
+the survivor; slots returned idle and a subsequent arithmetic request passed.
+
+With 90K ingestion, short first-token latency was 6.16/6.21 s, short completion
+19.28/15.50 s, and long completion 43.93/42.26 s. Both recall checks passed;
+both resumed from 16384 tokens after yielding. These are one long/short sample
+per setting, not broad long-context performance evidence.
+
+Primary cache changed 7648 → 7589 slots, 14854 → 14740 MiB. Initial engine free
+VRAM changed 463 → 445 MiB; the low-headroom warning remains. Core peaks on
+physical GPU0/1 were plain 64/75 C and MTP 72/77 C; minimum available RAM
+57.70/56.38 GiB. No sampled inference thermal flags, cap changes, OOM, safety
+abort or unexpected test-container restart occurred.
+
+The tested candidate was saved and deployed from this repo on the existing
+authenticated LAN endpoint. Production runtime matched the candidate; a live
+pair again proved accepted MTP proposals, and an arithmetic completion passed.
+Both services are healthy. Five unit tests, Compose validation, diff/credential
+checks and power-cap readback passed. Source/image, key and volume are unchanged.
+
+Limits: one boot/setting, fixed order, small samples, no ABBA/randomized repeat,
+240K concurrency, four-client fairness, full thinking-on/tool/Responses agent
+quality suite or hour-scale soak. The default batch-MTP gate excludes layer
+splits/helpers; do not carry this opt-in into a layer-split experiment.
+To revert only this flag, remove --batch-mtp, update saved-setting tests, and
+recreate only strata; retain parallel=2 and all other settings/caps.
+
+### Peer-mode parallel=2 trial (2026-10-08)
+
+The operator asked to try two active slots for concurrent projects while keeping
+multi-GPU performance in view. At this stage the config gained `"parallel": 2`.
+All existing arguments, GPU roles/caps, peer reserve and parking remained fixed.
+Batch-MTP was off; the later opt-in trial is above. Plain batching bought
+responsiveness at a throughput cost. (E13)
+
+| Metric | Serial | Parallel 2 |
+| --- | ---: | ---: |
+| Solo narrative decode, tok/s | 123.40 | 121.51 |
+| Solo code decode, tok/s | 138.33 | 136.46 |
+| Two-client narrative aggregate, tok/s | 115.16 | 107.25 |
+| Two-client code aggregate, tok/s | 130.92 | 109.58 |
+| Later stream first token, narrative, median s | 4.67 | 0.53 |
+| Later stream first token, code, median s | 4.11 | 0.55 |
+
+Solo speed fell 1.5%/1.3%; two-client aggregate fell 6.9%/16.3%. Concurrent
+streams averaged about 56–57 tok/s each. These extended essay/code prompts had
+512-token output caps and differ from the historical release baseline. Each
+setting had four scored solo samples and three scored pairs per shape, after
+warmups. Temperature .6/.95/top_k20/min_p0, thinking off.
+
+A separate fresh matched-arrival 90K/short-request test submitted the short
+request 0.76/0.75 s after starting ingestion. Short first-token latency improved
+34.76 → 6.16 s; completion improved 36.86 → 19.39 s. The long request slowed
+34.11 → 43.75 s. Both recall answers passed. The parallel prompt yielded at
+16384 tokens; cache_n counts its internal resumed prefix, not a warm document.
+
+- Status and metrics report two slots; both were observed decoding simultaneously.
+- Arithmetic, sorting and JSON checks passed beside a live background stream.
+- A → B → A restored 2152 prompt tokens and the expected verification word.
+- Disconnecting one stream did not stop or contaminate the survivor; slots
+  returned idle and a subsequent arithmetic request passed.
+- Slot sessions cost 0.95 GiB each / 1.90 GiB total on CUDA0. Primary expert
+  cache fell 8647 → 7648 slots, 16814 → 14854 MiB. Initial engine free VRAM
+  stayed about 459/463 MiB; the low-headroom warning remains.
+- Retained serial/parallel inference core peaks were physical GPU0/1 61/74 C
+  and 69/76 C; minimum available RAM 64.15/56.82 GiB. No inference thermal
+  flags, OOM, safety abort or unexpected test-container restart.
+
+The serial arm completed 33/33 requests; the parallel retry completed 41/41.
+An earlier parallel arm stopped on an invalid harness assertion that a yielded
+prompt's cache_n must be zero. Its recall answer was correct; that arm was
+excluded. Serial production was restored between attempts. The initial mixed
+arrival check also used the wrong metrics field; only the matched recheck above
+is compared. All isolated tests used authenticated loopback with normal API
+traffic excluded.
+
+The saved config matches the tested candidate. Production was recreated from
+this repo and verified with two client streams, status/metrics and an arithmetic
+completion. Both services are healthy on the existing authenticated LAN binding.
+No test override remained active. At this stage, unit tests verified parallel
+propagation and absence of batch-MTP; Compose and diff checks passed.
+
+Limits: one retained throughput boot/setting, interrupted ordering, small sample
+counts, no randomized comparison, 240K concurrency, four-client fairness,
+batch tool-call/agent suite or hour-scale soak. This screen does not establish
+scalable multi-GPU throughput or byte-identical solo/batch answers.
+For a current serial rollback, remove both the top-level parallel field and
+--batch-mtp, update saved-setting tests, and recreate only strata. Leave
+power-policy and all caps unchanged.
 
 ### v0.1.40.3 upgrade checks (2026-10-07)
 
@@ -238,9 +368,9 @@ at upgrade; it was not rerun alongside timing measurements.
 
 Limits: two boots/version, not randomized or hour-scale heat-soaked; sampled
 outputs vary. Sparse long samples do not establish broad reasoning quality.
-Full quality/thinking-on, agent workflows and concurrency remain untested.
-Do not combine the historical .39/.40.1 gain with this run to claim a direct
-.39/.40.3 comparison.
+That baseline A/B did not test full quality/thinking-on, agent workflows or
+concurrency. Do not combine the historical .39/.40.1 gain with this run to
+claim a direct .39/.40.3 comparison.
 
 ### v0.1.40.1 build and static checks
 
@@ -357,7 +487,7 @@ The full 150-case suite applies to v0.1.38, not v0.1.39, v0.1.40.1 or v0.1.40.3.
 v0.1.39 upgrade screen did not repeat thinking-on or parallel-serving tests.
 The v0.1.40.1 smoke, quality-screen, and matched A/B checks do not replace those
 suites. The .40.3 upgrade checks are smaller in scope. Clean-machine, broad
-quality, long-context reasoning, agent workflows, multi-client and
+quality, long-context reasoning, agent workflows, broader multi-client and
 sustained-load tests for the current pin remain open.
 
 Authentication, loopback binding, read-only model mounts, and the isolated
@@ -366,8 +496,8 @@ power-policy service are deployment safeguards, not performance tuning. See
 
 ## Evidence records
 
-E1–E8 live under `/opt/ai/Strata/bench/results/` on the original rig. E9–E10 and E12 live
-under `/opt/ai/Strata-backups/evaluations/`; E11 is under
+E1–E8 live under `/opt/ai/Strata/bench/results/` on the original rig. E9–E10 and
+E12–E14 live under `/opt/ai/Strata-backups/evaluations/`; E11 is under
 `/opt/ai/Strata-backups/`. They are not included in this repo. The summaries
 above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unless marked otherwise.
 
@@ -385,6 +515,8 @@ above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unles
 | E10 | `20261006-095827-v039-v0401-matched-ab-isolated/ANALYSIS.md` | Fresh matched two-boot A/B; decode gains, unchanged replay, recall, telemetry and restoration |
 | E11 | `upgrade-v0403-20261007-212242/ANALYSIS.md` | v0.1.40.3 build/server tests, rollout, functional/cache/long-recall checks and rollback records |
 | E12 | `20261007-214322-v0401-v0403-matched-ab/ANALYSIS.md` | Fresh matched ABBA baseline; modest decode gains, flat prefill/replay, recall, telemetry and .40.3 restoration |
+| E13 | `20261008-094412-parallel2-peer-validated/ANALYSIS.md` | Two-slot peer trial; latency/throughput tradeoff, overlap, cache, cancellation, matched-arrival recheck and live activation |
+| E14 | `20261008-101518-batch-mtp-peer-trial/ANALYSIS.md` | Two-slot peer batch-MTP; activation, throughput gains, overlap, cache, cancellation, memory and live adoption |
 
 The operator supplied the model, KV precision, vision, parking, and thermal
 rationales. The operator confirmed MTP4 was inherited. Automatic cache/prefill

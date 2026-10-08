@@ -24,7 +24,9 @@ class DeploymentTests(unittest.TestCase):
                             '--conversation-cache-slots': '8', '--peer-device': '1'}.items():
             self.assertEqual(args[args.index(flag) + 1], value)
         self.assertNotIn('api_key', cfg)
+        self.assertEqual(cfg['parallel'], 2)
         self.assertNotIn('--layer-split', args)
+        self.assertIn('--batch-mtp', args)
 
     def test_empty_key_refused(self):
         entry = load('entrypoint')
@@ -61,6 +63,8 @@ class DeploymentTests(unittest.TestCase):
                 self.assertEqual(os.environ['STRATA_API_KEY'], 'test-only-key')
             runtime = json.loads((state / 'runtime.json').read_text())
             self.assertEqual(runtime['env']['CUDA_VISIBLE_DEVICES'], 'GPU-primary,GPU-peer')
+            self.assertEqual(runtime['parallel'], 2)
+            self.assertIn('--batch-mtp', runtime['args'])
             self.assertNotIn('test-only-key', json.dumps(runtime))
 
     def test_power_policy_requires_distinct_gpus(self):
