@@ -143,17 +143,17 @@ The older performance and quality matrices ran with parking disabled.
 
 ## Build and version
 
-**Strata v0.1.40.3 is pinned; build, server tests, live upgrade checks and a
-matched two-boot serial baseline comparison passed.** Later peer-mode trials
-now enable two active slots and batch-MTP. The operator accepted this as the
-new baseline. All other engine settings remain unchanged; other new opt-ins
-remain off. The engine reports 0.1.40.3. Full
-quality, broader concurrency and sustained-load validation remain pending.
+**Strata v0.1.41 is pinned; the tested image was promoted after operator
+approval.** Build, server tests, a four-boot comparison against .40.3 and live
+promotion checks passed. The peer-mode two-slot/batch-MTP baseline, all other
+engine settings and GPU caps remain unchanged; experimental opt-ins remain
+off. Both services use the .41 image; the engine reports 0.1.41. No material
+speed gain was established. Full quality, broader concurrency and sustained-load
+validation remain pending.
 
-The v0.1.40.1 quality-screen and matched two-boot results below remain specific
-to that version. The .40.3 upgrade includes default verify-window improvements,
-batching and K8V4 fixes, startup/restart safeguards, and MTP router hardening.
-Its short correctness checks do not establish performance gains.
+The older quality-screen and serial baseline results below remain specific to
+their versions. The .41 screen exercises compatibility and the long/long/short
+deadlock shape, not comprehensive model quality, fairness or recovery behavior.
 
 **Earlier measurements remain version-specific.** The v0.1.39 screen
 measured 108.17/139.55 tok/s narrative/code versus 99.74/129.70 for the combined
@@ -164,6 +164,96 @@ better model quality. All eight long-context recall checks passed. (E8)
 CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
+
+### v0.1.41 promotion (2026-10-08)
+
+The operator approved promotion after the release screen below. The source pin
+is `fb58e0dbc8399662c0e47c76578c6e878b14f6cf`; both services use
+`strata-local:0.1.41`, tagged from the exact tested image, not rebuilt. CUDA 13,
+sm_86 and vision-off build settings stayed fixed. The old .40.3 image and private
+rollback files were retained. (E16)
+
+- Both services healthy; engine .41, two serving slots, native 262144 context.
+- Runtime JSON exactly matches the .40.3 screen baseline. Models, MTP tensors,
+  profile, key, volume, authenticated binding, UUID roles and caps unchanged.
+- Engine-process CUDA UUID order and primary 300 W / peer 350 W readback passed.
+  Power-policy was recreated on the shared image with the same policy.
+- Unauthenticated API returned 401; authenticated arithmetic and metrics passed.
+- A live two-client pair produced 512 tokens each. Batch-MTP accepted proposals:
+  peak 3.62 emitted rows/window with two slots.
+- A → B → A restored 2153 prompt tokens and the expected verification word.
+- Primary cache remains 7589 slots / 14740 MiB; startup free VRAM 445 MiB.
+  The low-headroom warning remains. No safety abort or OOM during promotion.
+- Five deployment tests, real Compose validation, diff whitespace and credential
+  checks passed. The build/server suite and long-context screen were reused,
+  not rerun during promotion. No new tuning switches were enabled.
+
+Promotion smoke checks do not extend the release screen's quality, fairness or
+soak coverage. Stall recovery and forced cache-budget eviction remain untested.
+
+### v0.1.41 peer-mode release screen (2026-10-08)
+
+**The candidate passed; .40.3 was restored at the end of this screen.** The later
+operator-approved promotion is above. v0.1.41 was built from
+`fb58e0dbc8399662c0e47c76578c6e878b14f6cf` in a separate worktree. Four fresh
+boots used .40.3 → .41 → .41 → .40.3, with identical runtime JSON, expert-profile
+hash, peer topology, parallel=2, batch-MTP and caps. No experimental switches
+were enabled. Test traffic used authenticated loopback with normal API traffic
+excluded. Power-policy stayed running. (E15)
+
+| Metric | v0.1.40.3 | v0.1.41 | Change |
+| --- | ---: | ---: | ---: |
+| Solo narrative decode, tok/s | 119.70 | 119.79 | +0.1% |
+| Solo code decode, tok/s | 135.19 | 133.64 | -1.1% |
+| Two-client narrative aggregate, tok/s | 124.34 | 124.11 | -0.2% |
+| Two-client code aggregate, tok/s | 136.53 | 138.01 | +1.1% |
+| Cold 90K prefill, tok/s | 2567.60 | 2560.95 | -0.3% |
+| Cold 240K prefill, tok/s | 2287.55 | 2283.15 | -0.2% |
+
+There is no demonstrated material speed gain. Each workload/version had eight
+scored solo streams and six scored pairs, after warmups; 512-token output caps,
+.6/.95/top_k20/min_p0, thinking off. Within-boot pair CV ranged 1.09–7.87%
+narrative and .34–2.29% code. Boot variability exceeds several version deltas.
+Mixed 90K/short first-token latency stayed 6.25–6.27 s; long completion stayed
+42.38–42.57 s. Do not combine this screen with earlier serial benchmarks.
+
+- Candidate CUDA 13 / sm_86 text-only build passed. Its image server suite ran
+  593 tests, 11 skipped, no failures; no GPU, models, secrets or network.
+- Runtime equality, engine-process UUID order, authentication and cap readback
+  passed. Baseline arms completed 48/48 expected requests, candidates 54/54;
+  no counter reset or unexpected container/engine restart occurred.
+- Batch-MTP accepted proposals on both candidate boots: peak emitted rows per
+  window 3.57/3.51 with two slots. Both slots decoded simultaneously.
+- Parking restored 2152 tokens and the expected word. Background arithmetic,
+  sorting, JSON and client-disconnect isolation passed. Named tool calls
+  (not executed), Responses and low-thinking arithmetic smoke checks passed.
+- All eight cold 90K/240K recalls and eight immediate replays passed. Document
+  hashes and prompt lengths matched; cold cache_n=0. Actual lengths were
+  90058/240061. Replays generated only 12–13 tokens, not long output workloads.
+- Candidate long/long/short passed four repetitions, each with three requests
+  in flight and control waiters observed. Short completions took 6.03–76.93 s.
+  No deadlock in these runs does not establish fairness or low three-client
+  latency. The known deadlock sequence was not deliberately run on .40.3.
+- Primary cache stayed 7589 slots / 14740 MiB; startup free VRAM stayed 445 MiB.
+  Physical GPU0/1 core peaks including transitions were 80/81 C; minimum
+  available RAM 46.33 GiB. No OOM or safety abort; caps stayed fixed.
+- One software thermal-slowdown sample occurred in the first baseline arm,
+  another during production restoration. None occurred in candidate arms.
+  The run is not a thermal-limiting-free stress pass.
+
+The first attempt was excluded after a harness assertion used serial `queued`
+instead of parallel-engine `waiting`. Its requests returned correctly and
+production was restored. The corrected four-arm run above completed in full.
+Production was restored again: both .40.3 services healthy, runtime unchanged,
+GPU order confirmed and authenticated arithmetic passed. Five deployment tests,
+real Compose validation and diff whitespace checks passed.
+
+Limits: two boots/version, fixed ABBA order, small samples, no full agent or
+thinking-on quality suite, 240K concurrent ingestion, randomized comparison or
+hour-scale soak. Stall recovery and forced full-cache RAM eviction were not
+injected. v0.1.41 is a reliability upgrade candidate, not a demonstrated speed
+upgrade. This screen did not promote the candidate; source and saved settings
+were unchanged until the later approved promotion.
 
 ### Peer-mode batch-MTP trial (2026-10-08)
 
@@ -483,11 +573,13 @@ its generic 1 GiB free-VRAM guard: the primary had only 294 MiB free in the
 reported accounting. Automatic expert-cache filling leaves little margin.
 Do not co-host another GPU workload or call this a clean stress-gate pass. (E7)
 
-The full 150-case suite applies to v0.1.38, not v0.1.39, v0.1.40.1 or v0.1.40.3. The
-v0.1.39 upgrade screen did not repeat thinking-on or parallel-serving tests.
+The full 150-case suite applies to v0.1.38, not v0.1.39, v0.1.40.1, v0.1.40.3
+or v0.1.41. The v0.1.39 upgrade screen did not repeat thinking-on or
+parallel-serving tests.
 The v0.1.40.1 smoke, quality-screen, and matched A/B checks do not replace those
-suites. The .40.3 upgrade checks are smaller in scope. Clean-machine, broad
-quality, long-context reasoning, agent workflows, broader multi-client and
+suites. The .40.3 upgrade checks and .41 release/promotion screens are smaller
+in scope. Clean-machine, broad quality, long-context reasoning, agent workflows,
+broader multi-client and
 sustained-load tests for the current pin remain open.
 
 Authentication, loopback binding, read-only model mounts, and the isolated
@@ -497,7 +589,7 @@ power-policy service are deployment safeguards, not performance tuning. See
 ## Evidence records
 
 E1–E8 live under `/opt/ai/Strata/bench/results/` on the original rig. E9–E10 and
-E12–E14 live under `/opt/ai/Strata-backups/evaluations/`; E11 is under
+E12–E15 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
 `/opt/ai/Strata-backups/`. They are not included in this repo. The summaries
 above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unless marked otherwise.
 
@@ -517,6 +609,8 @@ above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unles
 | E12 | `20261007-214322-v0401-v0403-matched-ab/ANALYSIS.md` | Fresh matched ABBA baseline; modest decode gains, flat prefill/replay, recall, telemetry and .40.3 restoration |
 | E13 | `20261008-094412-parallel2-peer-validated/ANALYSIS.md` | Two-slot peer trial; latency/throughput tradeoff, overlap, cache, cancellation, matched-arrival recheck and live activation |
 | E14 | `20261008-101518-batch-mtp-peer-trial/ANALYSIS.md` | Two-slot peer batch-MTP; activation, throughput gains, overlap, cache, cancellation, memory and live adoption |
+| E15 | `20261008-110356-v041-peer-matched/ANALYSIS.md` | Four-boot .40.3/.41 peer batch-MTP screen; flat speed, activation, cache, recall, concurrency and .40.3 restoration. Build/server tests linked in `build-evidence-path.txt`. |
+| E16 | `20261008-114153-promote-v041/ANALYSIS.md` | Approved .41 promotion of tested image; runtime equality, authentication, UUID/cap checks, two-client MTP activation and cache switching. |
 
 The operator supplied the model, KV precision, vision, parking, and thermal
 rationales. The operator confirmed MTP4 was inherited. Automatic cache/prefill

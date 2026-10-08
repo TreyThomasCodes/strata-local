@@ -8,7 +8,7 @@ startup scripts, and a pinned source submodule. Store models and secrets separat
 
 See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limits.
 
-- Strata v0.1.40.3: `d5ea7133741e67743c0e886bb426c0ce8d69cf6c`,
+- Strata v0.1.41: `fb58e0dbc8399662c0e47c76578c6e878b14f6cf`,
   from [Niko1221/Strata](https://github.com/Niko1221/Strata).
 - CUDA 13.0; sm_86 build; vision disabled.
 - Original rig: physical GPU1 primary at 300 W; physical GPU0 peer at 350 W.
@@ -24,11 +24,13 @@ See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limi
 - Authentication required, including on the default loopback binding.
 
 Original engine settings are retained except for the accepted two-slot
-concurrency and batch-MTP baseline. The source pin is v0.1.40.3; the build, server tests,
-authenticated smoke checks, cache switching and 90K/240K recall passed. Both services use the locally built
-v0.1.40.3 image; the engine reports 0.1.40.3. With serial settings, a fresh matched
-two-boot comparison against v0.1.40.1 measured +1.9% narrative and +3.7% code
-decode; cold prefill and cached long requests were effectively unchanged.
+concurrency and batch-MTP baseline. The source pin is v0.1.41; build, server tests,
+authenticated checks, cache switching and 90K/240K recall passed. Both services
+use the locally built v0.1.41 image; the engine reports 0.1.41. A fresh four-boot
+comparison against v0.1.40.3 found no material speed gain with the current peer
+settings. Four long/long/short repetitions completed without deadlock, but short
+requests sometimes waited up to 77 s. The operator approved promotion for
+reliability, not speed; settings and caps stayed unchanged.
 Plain two-slot batching improved responsiveness but cost aggregate throughput.
 The subsequent batch-MTP trial recovered speed; these are separate comparisons.
 Full quality, broader concurrency and sustained-load validation remain pending.
@@ -116,7 +118,7 @@ registry dependency. Stop the old deployment before migrating: two model servers
 must not share these cards or the host port.
 
 Verify health reports `loaded: true`, `max_context: 262144`, and `api_key: true`.
-Test an authenticated completion and `/metrics`. Confirm engine version 0.1.40.3,
+Test an authenticated completion and `/metrics`. Confirm engine version 0.1.41,
 conversation cache enabled, budget 16384 MiB, and 8 parked slots. Confirm
 `/v1/status` reports `concurrency.serving: 2`; active and parked slots differ.
 Use API base URL `http://127.0.0.1:8080/v1` and model
@@ -201,6 +203,18 @@ enabled with two slots as the operator-approved baseline. Upstream documents
 single-GPU support; this limited
 peer test is not broad compatibility or quality validation. See
 [SETTINGS.md](SETTINGS.md#peer-mode-batch-mtp-trial-2026-10-08).
+
+On 2026-10-08, v0.1.41 passed a four-boot comparison against .40.3 with the
+current peer/two-slot/batch-MTP settings. Speed was effectively flat; activation,
+cache, cancellation, tool/Responses smoke, cold and replayed 90K/240K recall,
+and four candidate long/long/short repetitions passed. The candidate server
+suite ran 593 tests, 11 skipped, no failures. After operator approval, both
+services were promoted using the tested image. Health, authenticated completion,
+GPU ordering, caps, two-client batch-MTP activation and cache switching passed.
+Source and image changed; model, key, volume, binding and engine settings did not.
+The .40.3 image remains available for rollback. See
+[SETTINGS.md](SETTINGS.md#v0141-promotion-2026-10-08). Full quality and soak testing,
+forced cache-budget eviction and stall-recovery injection remain untested.
 
 The original rig's ignored `.env` sets `COMPOSE_PROJECT_NAME=strata` to retain
 the existing `strata_strata-state` volume and preserves its authenticated LAN
