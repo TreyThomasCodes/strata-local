@@ -223,6 +223,12 @@ short throughput tests but failed 90K ingestion on both boots with cuBLAS status
 14. Do not adopt four slots as tested. See
 [SETTINGS.md](SETTINGS.md#peer-mode-active-slot-sweep-2026-10-08).
 
+The prefill-chunk sweep retained `--prefill auto`. Fixed 4096/2048 reduced short
+first-token latency beside 90K ingestion from 7.0 s to 4.2/2.8 s, but cold
+long-prompt wall time rose 14–15% / 43–45% and peer thermal limiting appeared in both
+fixed-chunk boots per setting. Three-request admission delays remained variable.
+See [SETTINGS.md](SETTINGS.md#peer-mode-prefill-chunk-sweep-2026-10-08).
+
 The original rig's ignored `.env` sets `COMPOSE_PROJECT_NAME=strata` to retain
 the existing `strata_strata-state` volume and preserves its authenticated LAN
 binding. Docker now records this repo's `compose.yaml` as the running stack's

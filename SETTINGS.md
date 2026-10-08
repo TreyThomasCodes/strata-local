@@ -165,6 +165,84 @@ CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
 
+### Peer-mode prefill-chunk sweep (2026-10-08)
+
+**Keep `--prefill auto`. Fixed 4096 improves responsiveness but costs ingestion
+speed and peer thermal margin; 2048 costs substantially more.** Six fresh boots
+used auto → 4096 → 2048 → 2048 → 4096 → auto. Only --prefill changed; .41 image,
+source/profile, peer mode, parallel=2, batch-MTP, context/KV, parking, UUID order
+and caps stayed fixed. Normal API traffic was excluded. No candidate adopted.
+(E18)
+
+Means across two boots:
+
+| Metric | auto: 8192 selected | 4096 | 2048 |
+| --- | ---: | ---: | ---: |
+| Short first token beside 90K, s | 7.00 | 4.20 | 2.83 |
+| Same short completion, 256 tokens, s | 16.39 | 14.05 | 11.02 |
+| Mixed 90K long completion, s | 43.26 | 47.50 | 57.86 |
+| Cold 90K recall wall, s | 35.25 | 40.30 | 50.45 |
+| Cold 240K recall wall, s | 104.93 | 120.50 | 152.42 |
+| Solo narrative / code, tok/s | 121.34 / 136.59 | 120.07 / 132.35 | 117.56 / 134.53 |
+| Pair aggregate narrative / code, tok/s | 127.43 / 137.69 | 124.80 / 137.52 | 125.83 / 137.75 |
+
+4096 reduced mixed short TTFT 40%, but cold ingestion wall rose 14–15%. 2048
+reduced TTFT 60%, but cold wall rose 43–45%. Replay was effectively flat; it
+produced only 12–13 recall tokens, not long outputs. Ordinary decode did not
+gain. Modest decode differences are subject to sampled-output/run variation.
+Each setting had eight scored solos and six scored pairs per workload after
+warmups, 512-token caps, .6/.95/top_k20/min_p0, thinking off.
+
+**Smaller chunks did not reliably solve three-request admission waits.** Four
+long/long/short repetitions per setting returned correct answers. Short walls:
+auto 6.06–78.42 s, 4096 3.41–87.01 s, 2048 2.05–107.07 s. Each triple recorded
+three requests in flight and a control waiter. These sparse maxima are not p95.
+
+**Fixed chunks worsened observed peer thermal behavior on both boots.** Physical
+GPU0 peer core peaks were auto 79/82 C, 4096 84/84 C, 2048 85/85 C.
+Peer thermal-active samples were 0/0, 60/118 and 348/348 respectively. One primary software
+thermal-slowdown sample occurred in the first 4096 arm. Primary core peaked at
+81 C; available RAM floor 46.30 GiB. Caps remained primary 300 W / peer 350 W;
+no safety guard triggered. Thermal effects and different arm durations limit
+isolated chunk-cost attribution. Core readings do not establish memory-junction
+temperatures. A latency gain alone does not meet this rig's thermal rationale.
+
+- All six arms completed 52/52 expected inference requests, without counter
+  reset or unexpected engine/container restart. Runtime differed only in
+  --prefill; serving slots, UUID order, image and profile matched. Batch-MTP
+  acceptance and simultaneous two-slot decoding were proved.
+- All 12 cold 90K/240K recalls and 12 replays passed. Cold cache_n=0; document
+  hashes and actual lengths matched across settings: 90063/240066 tokens.
+- Parking restored 2154 tokens. Background arithmetic/sorting/JSON, cancellation
+  isolation, post-cancel arithmetic and named tool-call parsing passed; the tool
+  was not executed. All mixed code streams in this comparison produced 256
+  tokens and had code-module content matching the requested subject.
+- Auto borrowed 2305 primary cache slots / 4.38 GiB for prompt buffers; 4096
+  borrowed 1514 / 2.87 GiB, 2048 1118 / 2.12 GiB. Matched mixed reads yielded
+  at 16384/8192/4096 tokens. Chunk size is not an end-to-end latency guarantee.
+- Primary cache stayed 7589 experts / 14740 MiB. Startup free VRAM stayed
+  445–447 MiB; the low-headroom warning remains. No cuBLAS error or CUDA-graph
+  eviction was logged in the corrected screen.
+
+The earlier attempt was excluded after a 4096 mixed code stream stopped normally
+at 26 rather than 256 tokens and tripped the fixed-length benchmark assertion.
+The engine did not crash; auto was restored. Its full reply was not archived,
+so the answer's quality cannot be classified. The new harness captures the
+reply before assessing length; the early stop did not recur in the six-arm run.
+Do not call the first response proved corruption or proved harmless EOS.
+
+Auto/two-slot production was restored unchanged; both services healthy, runtime,
+GPU order, authenticated arithmetic/metrics and cap readback passed. Five unit
+tests, real Compose validation, diff whitespace and credential checks passed.
+Source/image, models, key, volume and binding unchanged. No build/server-suite
+rerun: the image did not change.
+
+Limits: two boots/setting, fixed balanced order, small synthetic samples, thermal
+effects, no full thinking-on/agent quality, 240K concurrent ingestion or
+hour-scale per-setting soak. Chunk geometry changes output rounding; no byte-identity
+claim. Keep auto for the current thermal/throughput goals. 4096 is an optional
+responsiveness tradeoff, not a new default.
+
 ### Peer-mode active-slot sweep (2026-10-08)
 
 **Two slots remain the baseline. Three are a workload-specific tradeoff; four
@@ -655,7 +733,7 @@ power-policy service are deployment safeguards, not performance tuning. See
 ## Evidence records
 
 E1–E8 live under `/opt/ai/Strata/bench/results/` on the original rig. E9–E10 and
-E12–E15 and E17 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
+E12–E15 and E17–E18 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
 `/opt/ai/Strata-backups/`. They are not included in this repo. The summaries
 above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unless marked otherwise.
 
@@ -678,6 +756,7 @@ above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unles
 | E15 | `20261008-110356-v041-peer-matched/ANALYSIS.md` | Four-boot .40.3/.41 peer batch-MTP screen; flat speed, activation, cache, recall, concurrency and .40.3 restoration. Build/server tests linked in `build-evidence-path.txt`. |
 | E16 | `20261008-114153-promote-v041/ANALYSIS.md` | Approved .41 promotion of tested image; runtime equality, authentication, UUID/cap checks, two-client MTP activation and cache switching. |
 | E17 | `20261008-122331-peer-slot-sweep-continued/ANALYSIS.md` | Two boots each at 2/3/4 slots; three-client latency/throughput tradeoff, repeated four-slot cuBLAS failures and two-slot restoration. First half linked by `first-attempt-path.txt`. |
+| E18 | `20261008-131908-peer-prefill-sweep-captured/ANALYSIS.md` | Matched auto/4096/2048 chunks; short TTFT gains, cold-ingestion losses, peer thermal limiting, correctness and auto restoration. Excluded first attempt linked in `excluded-attempt-path.txt`. |
 
 The operator supplied the model, KV precision, vision, parking, and thermal
 rationales. The operator confirmed MTP4 was inherited. Automatic cache/prefill
