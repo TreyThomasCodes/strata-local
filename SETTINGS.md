@@ -165,6 +165,74 @@ CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
 
+### Peer-mode batch decode-share sweep (2026-10-08)
+
+**Retain default `0.5` for balance, as selected by the operator.** `0.25` is an
+ingestion-first candidate; `1.0` favors the active stream. Neither removes
+multi-second pauses. Six fresh boots used `STRATA_BATCH_DECODE_SHARE`
+0.5 → 0.25 → 1.0 → 1.0 → 0.25 → 0.5 through Compose overrides. Only this variable
+changed; its actual engine-process value was verified. Runtime JSON stayed
+identical. .41 image/source/profile, peer mode, two slots, batch-MTP, auto
+prefill, context/KV/parking, UUID order and 300/350 W caps stayed fixed. (E19)
+
+Start a 2048-token narrative stream, wait for its first content event + .75 s,
+then admit a unique 90K recall prompt. Per boot: one warmup and three scored
+pairs, six scored pairs/share across two boots. Metrics proved an established
+stream, two in-flight requests during reading and continued decode progress.
+All 24 active streams reached 2048 tokens; all recalls were correct, cold
+cache_n=0, actual length 90063 and matching document hashes across settings.
+
+| Metric, scored means unless marked | 0.25 | 0.5 default | 1.0 |
+| --- | ---: | ---: | ---: |
+| Active stream completion, s | 56.38 | 58.42 | 49.25 |
+| 90K recall completion during stream, s | 44.07 | 51.74 | 60.30 |
+| Mean largest content gap during reading, s | 3.70 | 3.67 | 3.27 |
+| Worst observed reading-window gap, s | 3.77 | 3.76 | 3.29 |
+| Content events during observed reading window | 664.5 | 1319.8 | 1905.8 |
+| Gaps over 2 s during window | 11 | 11 | 8 |
+
+`0.25` reduced long wall 14.8% and active wall 3.5% in this sample. But stream
+progress during ingestion roughly halved. After the long request finished,
+metrics showed the active stream back outside the slots on the solo path.
+Earlier ingestion completion allows more work there; this endpoint win is not
+better stream progress throughout ingestion or a universal benefit.
+
+`1.0` reduced active wall 15.7% but increased long wall 16.5%. The stream
+finished before the long request, encountering fewer chunks. Eight rather than
+eleven pauses is not finer prompt geometry. Gaps are client-visible content
+events within the observed reading window, not exact engine token timings or
+population p95. Metrics were sampled every .2 s; window boundaries are approximate.
+This was not a new-request admission or three-request fairness test.
+
+Cold 90K alone stayed effectively flat: 35.40/35.20/35.41 s at 0.25/0.5/1.0.
+Ordinary solo/pair decode did not gain; modest sampled differences reached
+-2.5%. Each boot/shape used two warmup + four scored solos and one warmup + three
+scored pairs, 512 tokens, .6/.95/top_k20/min_p0, thinking off. Do not compare
+absolute rates with earlier release/slot/chunk sweeps.
+
+All six arms completed 50/50 expected inference requests, without counter reset
+or unexpected engine/container restart. Batch-MTP and simultaneous slot decoding
+were proved. Cold/replayed recall, cache restoration (2154 tokens), background
+arithmetic/sorting/JSON, cancellation isolation and post-cancel arithmetic
+passed. Named tool calls parsed correctly, not executed. No requested long
+secret appeared in an unrelated stream; no full quality or byte-identity claim.
+
+Primary cache stayed 7589 experts / 14740 MiB; startup free VRAM stayed 445 MiB.
+No cuBLAS error or CUDA-graph eviction was logged. Peer/primary core peaks were
+82/81 C; RAM floor 50.28 GiB. No thermal-active samples occurred during the six
+arms. One primary software thermal-slowdown sample occurred during restoration,
+not a scored arm. No safety guard triggered; caps stayed fixed. This is not the
+same stress workload as the earlier prefill sweep, nor an hour-scale soak.
+
+Default/unset `0.5` production was restored; actual engine environment has no
+share override. Both services healthy; runtime, authenticated arithmetic,
+metrics, UUID/cap and image/source/config checks passed. Five unit tests, Compose
+validation, whitespace and credential checks passed. No build/server-suite rerun:
+source/image unchanged. No candidate adopted. The operator selected `0.5` to
+retain the balance between ingestion and stream progress. Limits: two
+boots/share, one overlap workload, no 240K concurrency, full thinking-on/agent
+quality or hour-scale per-share soak.
+
 ### Peer-mode prefill-chunk sweep (2026-10-08)
 
 **Keep `--prefill auto`. Fixed 4096 improves responsiveness but costs ingestion
@@ -733,7 +801,7 @@ power-policy service are deployment safeguards, not performance tuning. See
 ## Evidence records
 
 E1–E8 live under `/opt/ai/Strata/bench/results/` on the original rig. E9–E10 and
-E12–E15 and E17–E18 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
+E12–E15 and E17–E19 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
 `/opt/ai/Strata-backups/`. They are not included in this repo. The summaries
 above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unless marked otherwise.
 
@@ -757,6 +825,7 @@ above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unles
 | E16 | `20261008-114153-promote-v041/ANALYSIS.md` | Approved .41 promotion of tested image; runtime equality, authentication, UUID/cap checks, two-client MTP activation and cache switching. |
 | E17 | `20261008-122331-peer-slot-sweep-continued/ANALYSIS.md` | Two boots each at 2/3/4 slots; three-client latency/throughput tradeoff, repeated four-slot cuBLAS failures and two-slot restoration. First half linked by `first-attempt-path.txt`. |
 | E18 | `20261008-131908-peer-prefill-sweep-captured/ANALYSIS.md` | Matched auto/4096/2048 chunks; short TTFT gains, cold-ingestion losses, peer thermal limiting, correctness and auto restoration. Excluded first attempt linked in `excluded-attempt-path.txt`. |
+| E19 | `20261008-143221-peer-decode-share-sweep/ANALYSIS.md` | Matched 0.25/0.5/1.0 decode shares; established-stream/90K overlap, event gaps, ingestion/progress tradeoff, correctness and default restoration. |
 
 The operator supplied the model, KV precision, vision, parking, and thermal
 rationales. The operator confirmed MTP4 was inherited. Automatic cache/prefill

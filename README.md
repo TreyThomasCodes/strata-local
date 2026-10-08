@@ -229,6 +229,12 @@ long-prompt wall time rose 14–15% / 43–45% and peer thermal limiting appeare
 fixed-chunk boots per setting. Three-request admission delays remained variable.
 See [SETTINGS.md](SETTINGS.md#peer-mode-prefill-chunk-sweep-2026-10-08).
 
+The decode-share sweep retained default `0.5` for balance. `0.25` reduced 90K
+ingestion wall 15% but roughly halved active stream progress during ingestion.
+`1.0` finished the active stream 16% sooner but increased ingestion wall 17%.
+Multi-second token pauses remained. See
+[SETTINGS.md](SETTINGS.md#peer-mode-batch-decode-share-sweep-2026-10-08).
+
 The original rig's ignored `.env` sets `COMPOSE_PROJECT_NAME=strata` to retain
 the existing `strata_strata-state` volume and preserves its authenticated LAN
 binding. Docker now records this repo's `compose.yaml` as the running stack's
