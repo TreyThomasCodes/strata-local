@@ -8,7 +8,7 @@ startup scripts, and a pinned source submodule. Store models and secrets separat
 
 See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limits.
 
-- Strata v0.1.39: `6f32ec070f23ced9f50e704d854d775da52591ab`,
+- Strata v0.1.40.3: `d5ea7133741e67743c0e886bb426c0ce8d69cf6c`,
   from [Niko1221/Strata](https://github.com/Niko1221/Strata).
 - CUDA 13.0; sm_86 build; vision disabled.
 - Original rig: physical GPU1 primary at 300 W; physical GPU0 peer at 350 W.
@@ -20,11 +20,17 @@ See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limi
   Requests execute serially. The budget is a ceiling, not an upfront allocation.
 - Authentication required, including on the default loopback binding.
 
-The source commit and settings match the original production deployment. Both
-services use the locally built v0.1.39 image; the original power-policy sidecar
-used v0.1.38. Builds are not guaranteed bit-for-bit identical: the upstream
-Dockerfile uses a tagged CUDA base and mutable dependencies. Native CPU build
-defaults require a rebuild on the destination rig.
+The engine settings match the original production deployment. The source pin
+is upgraded to v0.1.40.3; the build, server tests, authenticated smoke checks,
+cache switching and 90K/240K recall passed. Both services use the locally built
+v0.1.40.3 image; the engine reports 0.1.40.3. A fresh matched two-boot comparison
+against v0.1.40.1 measured +1.9% narrative and +3.7% code decode; cold prefill
+and cached long requests were effectively unchanged. Full quality, concurrency
+and sustained-load validation remain pending. See SETTINGS.md for the
+version-specific results and limits. Builds are not guaranteed bit-for-bit
+identical: the upstream Dockerfile uses a tagged CUDA
+base and mutable dependencies. Native CPU build defaults require a rebuild on
+the destination rig.
 
 ## Restore after a wipe
 
@@ -105,7 +111,7 @@ registry dependency. Stop the old deployment before migrating: two model servers
 must not share these cards or the host port.
 
 Verify health reports `loaded: true`, `max_context: 262144`, and `api_key: true`.
-Test an authenticated completion and `/metrics`. Confirm engine version 0.1.39,
+Test an authenticated completion and `/metrics`. Confirm engine version 0.1.40.3,
 conversation cache enabled, budget 16384 MiB, and 8 slots. Use API base URL
 `http://127.0.0.1:8080/v1` and model `qwen3.8-flash-next-iq3_s`.
 Check UUID-bound power caps with `nvidia-smi`.
@@ -140,6 +146,10 @@ settings. Keep this repo and model/key backups off the rig before wiping it.
 ## Update and validate
 
 Do not run `git submodule update --remote` blindly: it leaves the tested commit.
+Upstream rewrote history for v0.1.40.1. Do not apply its `git reset --hard
+origin/main` update recipe to this wrapper or its pinned submodule. Fetch and
+check out an exact release commit instead.
+
 To upgrade, select a source commit in `vendor/Strata`, build, and test quality,
 cache switching, and long-context behavior. Commit the new submodule pointer.
 
@@ -150,9 +160,30 @@ python3 -m unittest discover -s tests -v
 
 Original-rig cache smoke test (2026-10-05): A → B → A restored 1984 of 1991 prompt
 tokens and returned the same deterministic answer. The test did not measure
-sustained multi-client or long-context cache performance. This portable Compose
-wrapper has static/unit validation only. Verify a clean-machine build and live
-deployment. Creating the wrapper does not change the original running stack.
+sustained multi-client or long-context cache performance.
+
+On 2026-10-06, the original stack migrated to this wrapper at v0.1.40.1.
+Health, authenticated completions, metrics, peer prompt offload, GPU ordering,
+and power caps passed live checks. A → B → A restored 2153 of 2160 prompt tokens
+with the same deterministic answer. A later screen passed 90K/240K recall
+and scored 64/75 thinking-off quality, unchanged from v0.1.39. A fresh matched
+two-boot A/B then measured +7.0% narrative and +5.3% code decode. Cold prefill
+and cached-tail replay were unchanged; all eight long recall checks passed.
+The apparent historical replay slowdown did not reproduce. See
+[SETTINGS.md](SETTINGS.md#matched-v0139v01401-ab-2026-10-06) for numbers and limits.
+Those results apply to v0.1.40.1. On 2026-10-07, v0.1.40.3 passed build/server
+tests, authenticated functional checks, cache switching and 90K/240K recall.
+A separate fresh matched A/B against v0.1.40.1 measured +1.9% narrative and
++3.7% code decode with unchanged settings. Cold prefill, cached-tail replay and
+long-request wall times were effectively unchanged; eight recall checks passed.
+See [SETTINGS.md](SETTINGS.md#matched-v01401v01403-ab-2026-10-07). Full quality,
+concurrency, sustained-load and clean-machine checks remain pending.
+
+The original rig's ignored `.env` sets `COMPOSE_PROJECT_NAME=strata` to retain
+the existing `strata_strata-state` volume and preserves its authenticated LAN
+binding. Docker now records this repo's `compose.yaml` as the running stack's
+configuration. Run service commands from this repo, not `/opt/ai/Strata`.
+The old Compose file is retired; old images remain available for rollback.
 
 ## License
 
