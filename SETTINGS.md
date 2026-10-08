@@ -165,6 +165,72 @@ CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
 
+### Peer-mode active-slot sweep (2026-10-08)
+
+**Two slots remain the baseline. Three are a workload-specific tradeoff; four
+failed the compatibility gate.** The only setting varied was top-level parallel,
+with peer mode, batch-MTP, .41 image/source, profile, context/KV, parking and caps
+fixed. Six fresh boots used 2 → 3 → 4 → 4 → 3 → 2. Production was restored after
+the first four-slot failure, then the reverse half ran. This is balanced but
+not uninterrupted or randomized. (E17)
+
+Means across two boots, narrative/code tok/s:
+
+| Metric | 2 slots | 3 slots | 4 slots: short workloads only; rejected |
+| --- | ---: | ---: | ---: |
+| Solo decode | 121.29 / 136.93 | 119.05 / 132.07 | 117.90 / 134.36 |
+| Two-client aggregate | 126.85 / 138.83 | 122.06 / 137.00 | 122.72 / 135.38 |
+| Three-client aggregate | 121.44 / 133.15 | 135.95 / 144.44 | 135.15 / 142.95 |
+| Four-client aggregate | 129.98 / 139.01 | 127.90 / 137.92 | 141.13 / 148.74 |
+
+Three slots improved three-client aggregate 11.9%/8.5%, but solo fell 1.8%/3.5%,
+two-client aggregate 3.8%/1.3%, and four-client aggregate 1.6%/.8%. Each count
+had eight scored solos and six scored groups per client load/workload, after
+warmups; 512-token outputs, .6/.95/top_k20/min_p0, thinking off.
+
+**Three slots start all three ordinary clients sooner, not faster individually.**
+Worst sampled first-token latency with three clients fell 7.97/7.47 → .98/.99 s
+narrative/code. Mean completion wall rose 9.42/8.77 → 11.20/10.55 s; worst
+completion wall fell 12.69/11.65 → 11.35/10.83 s. With four clients, three slots
+postponed the fourth: worst sampled TTFT 11.34/10.60 s versus two slots'
+8.54/8.07 s. These are small-sample maxima, not population p95 estimates.
+
+- Both two-slot arms completed 103/103 expected inference requests; three-slot
+  arms 104/104. Runtime differed only by parallel count; actual serving slots,
+  engine UUID order, image and profile were matched. No engine/container restart
+  or counter reset in passing arms. All intended simultaneous decode counts
+  and accepted batch-MTP proposals were proved.
+- Two and three slots passed parking (2154 restored tokens), arithmetic/sorting/
+  JSON with slots-1 background streams, cancellation isolation and post-cancel
+  arithmetic. One 90K prompt plus a short stream remained effectively flat:
+  short TTFT about 6.44 s, completion about 15.9 s, long completion about 42.7 s.
+- Four long/long/short repetitions per passing count returned correct answers.
+  Short completions ranged 52.42–78.52 s with two slots and 27.22–78.68 s with
+  three. More slots did not reliably solve serialized prompt-admission waits.
+- Both four-slot boots completed the short throughput tests, then the engine
+  exited code 1 during 90K ingestion: `prefill gemm: cublasGemmEx: cuBLAS status 14`.
+  The short stream returned no content. Later correctness/cancellation checks
+  did not run. CUDA-graph eviction appeared 16/36 times versus zero at two/three
+  slots. VRAM/graph pressure is a diagnostic lead, not a proved OOM/root cause.
+  Four-client speed gains do not override the failures. No reserve/cache tweak
+  was made to attempt a fix.
+- Primary cache fell 7589 → 7051 → 6522 experts, 14740 → 13699 → 12667 MiB.
+  Startup free VRAM stayed about 450 MiB. The third slot removes 1041 MiB of
+  primary cache; the fourth another 1032 MiB. The low-headroom warning remains.
+- Physical GPU0/1 core peaks were 81/81 C; available RAM floor 43.56 GiB. One
+  software thermal-slowdown sample occurred in the first four-slot arm, none
+  in the continuation. Caps stayed fixed; no safety guard triggered.
+
+The saved two-slot config was restored unchanged; both .41 services healthy,
+authenticated arithmetic, runtime/GPU order and cap readback passed. Five unit
+tests, real Compose validation and diff whitespace checks passed. Source/image,
+key, models, volume and binding unchanged. No candidate count adopted.
+
+Limits: two boots/count, interrupted ordering, small synthetic samples, no full
+agent/thinking-on quality, 240K concurrent ingestion or hour-scale per-count soak.
+Three slots merit an operator choice for regular three-client responsiveness.
+Four require separate failure/headroom investigation first.
+
 ### v0.1.41 promotion (2026-10-08)
 
 The operator approved promotion after the release screen below. The source pin
@@ -589,7 +655,7 @@ power-policy service are deployment safeguards, not performance tuning. See
 ## Evidence records
 
 E1–E8 live under `/opt/ai/Strata/bench/results/` on the original rig. E9–E10 and
-E12–E15 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
+E12–E15 and E17 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
 `/opt/ai/Strata-backups/`. They are not included in this repo. The summaries
 above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unless marked otherwise.
 
@@ -611,6 +677,7 @@ above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unles
 | E14 | `20261008-101518-batch-mtp-peer-trial/ANALYSIS.md` | Two-slot peer batch-MTP; activation, throughput gains, overlap, cache, cancellation, memory and live adoption |
 | E15 | `20261008-110356-v041-peer-matched/ANALYSIS.md` | Four-boot .40.3/.41 peer batch-MTP screen; flat speed, activation, cache, recall, concurrency and .40.3 restoration. Build/server tests linked in `build-evidence-path.txt`. |
 | E16 | `20261008-114153-promote-v041/ANALYSIS.md` | Approved .41 promotion of tested image; runtime equality, authentication, UUID/cap checks, two-client MTP activation and cache switching. |
+| E17 | `20261008-122331-peer-slot-sweep-continued/ANALYSIS.md` | Two boots each at 2/3/4 slots; three-client latency/throughput tradeoff, repeated four-slot cuBLAS failures and two-slot restoration. First half linked by `first-attempt-path.txt`. |
 
 The operator supplied the model, KV precision, vision, parking, and thermal
 rationales. The operator confirmed MTP4 was inherited. Automatic cache/prefill

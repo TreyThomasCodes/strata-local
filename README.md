@@ -216,6 +216,13 @@ The .40.3 image remains available for rollback. See
 [SETTINGS.md](SETTINGS.md#v0141-promotion-2026-10-08). Full quality and soak testing,
 forced cache-budget eviction and stall-recovery injection remain untested.
 
+A later .41 peer-mode slot sweep retained two active slots. Three improved
+three-client startup latency and aggregate throughput but cost solo/two-client
+speed; they did not reliably fix long/long/short admission delays. Four completed
+short throughput tests but failed 90K ingestion on both boots with cuBLAS status
+14. Do not adopt four slots as tested. See
+[SETTINGS.md](SETTINGS.md#peer-mode-active-slot-sweep-2026-10-08).
+
 The original rig's ignored `.env` sets `COMPOSE_PROJECT_NAME=strata` to retain
 the existing `strata_strata-state` volume and preserves its authenticated LAN
 binding. Docker now records this repo's `compose.yaml` as the running stack's
