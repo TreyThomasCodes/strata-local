@@ -1,7 +1,7 @@
 name: strata-local
 
 x-image: &image
-  image: strata-local:0.1.41
+  image: strata-local:0.1.43.1
   build:
     context: ./vendor/Strata
     args:
