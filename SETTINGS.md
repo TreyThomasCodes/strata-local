@@ -143,13 +143,12 @@ The older performance and quality matrices ran with parking disabled.
 
 ## Build and version
 
-Strata v0.1.43.1 is pinned. The operator approved the upgrade after the release
-review. Build, server tests, a four-boot comparison against .41 and live
-promotion checks passed. The peer-mode two-slot/batch-MTP baseline, all other
-engine settings and GPU caps remain unchanged. Experimental opt-ins remain
-off. Both services use the .43.1 image. The engine reports 0.1.43.1. No material
-speed change was established. Full quality, broader concurrency and sustained-load
-validation remain pending. (E20)
+Strata v0.1.44.1 is pinned. The operator requested the upgrade after the release
+review. Both services use the locally built .44.1 image. The engine reports
+0.1.44.1. The peer-mode two-slot/batch-MTP baseline, all other saved engine
+settings and GPU caps remain unchanged. No speed comparison was run.
+Full quality, broader concurrency and sustained-load validation remain pending.
+The earlier .43.1 comparison remains version-specific. (E20)
 
 The older quality-screen and serial baseline results below remain specific to
 their versions. The .43.1 screen covers compatibility and long/long/short
@@ -164,6 +163,33 @@ better model quality. All eight long-context recall checks passed. (E8)
 CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
+
+### v0.1.44.1 upgrade (2026-10-15)
+
+The exact source pin is `296b59d2f73c8f04a805df29c2fa97655adace78`.
+The CUDA 13 / sm_86 / text-only image built successfully. All five deployment
+tests passed. The upstream server suite ran 785 tests with 11 skipped and no
+failures. Compose validation passed.
+
+Both services were recreated with the new image and became healthy. Health
+reported a loaded model, mandatory authentication and 262144-token context.
+The status endpoint reported engine 0.1.44.1 and two serving slots. Runtime JSON
+SHA-256 matched before and after the upgrade. An unauthenticated model request
+was refused. Authenticated completions, JSON metrics and Prometheus metrics
+passed. The engine process environment preserved primary/peer UUID order.
+Power-policy readback and UUID-bound 300 W / 350 W checks passed.
+
+A/B/A conversation switching returned the same code and reused 2025 of 2032
+prompt tokens. Recall returned the correct code for 90041-token and
+240035-token prompts. Both reused 81920 cached tokens. An initial repeat-line
+estimate exceeded the context limit and received HTTP 400. The corrected
+prompts passed. These are repetitive-text smoke checks, not broad quality tests.
+
+The .43.1 image remains available for rollback. Models, key, mounts, binding,
+volume and saved engine settings stayed unchanged. Full quality, matched
+performance, cold long-context, broader concurrency and sustained-load tests
+were not run. Temporary build and check records are in
+`/tmp/strata-v01441/`; they are not durable evidence or repository artifacts.
 
 ### v0.1.43.1 release screen and promotion (2026-10-12/13)
 
