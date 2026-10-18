@@ -12,5 +12,3 @@ DCGM_FI_DEV_MEM_CLOCK, gauge, Memory clock (MHz).
 DCGM_FI_DEV_CLOCKS_EVENT_REASONS, gauge, Bitmask of clock throttle reasons.
 DCGM_FI_DEV_XID_ERRORS, gauge, Last XID error value.
 DCGM_FI_DEV_PCIE_REPLAY_COUNTER, counter, PCIe replay count.
-DCGM_FI_PROF_NVLINK_TX_BYTES, gauge, NVLink transmit rate (bytes/s).
-DCGM_FI_PROF_NVLINK_RX_BYTES, gauge, NVLink receive rate (bytes/s).
