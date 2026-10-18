@@ -477,7 +477,7 @@
   },
   {
    "type": "timeseries",
-   "title": "Temperature (C)",
+   "title": "GPU temperature",
    "id": 11,
    "datasource": {
     "type": "prometheus",
@@ -496,22 +496,14 @@
       "uid": "strata-prometheus"
      },
      "expr": "DCGM_FI_DEV_GPU_TEMP",
-     "legendFormat": "{{role}} core",
+     "legendFormat": "{{role}}",
      "refId": "A"
-    },
-    {
-     "datasource": {
-      "type": "prometheus",
-      "uid": "strata-prometheus"
-     },
-     "expr": "DCGM_FI_DEV_MEMORY_TEMP",
-     "legendFormat": "{{role}} memory",
-     "refId": "B"
     }
    ],
    "fieldConfig": {
     "defaults": {
-     "unit": "celsius"
+     "unit": "celsius",
+     "min": 0
     },
     "overrides": []
    }
@@ -526,7 +518,7 @@
    },
    "gridPos": {
     "h": 8,
-    "w": 8,
+    "w": 12,
     "x": 0,
     "y": 14
    },
@@ -551,7 +543,7 @@
   },
   {
    "type": "timeseries",
-   "title": "SM clock (MHz)",
+   "title": "SM clock",
    "id": 13,
    "datasource": {
     "type": "prometheus",
@@ -559,8 +551,8 @@
    },
    "gridPos": {
     "h": 8,
-    "w": 8,
-    "x": 8,
+    "w": 12,
+    "x": 12,
     "y": 14
    },
    "targets": [
@@ -583,17 +575,17 @@
   },
   {
    "type": "state-timeline",
-   "title": "Why the GPU clock is limited",
+   "title": "Why the GPU clock is limited (power cap is expected at 300/350 W; red is a fault)",
    "id": 14,
    "datasource": {
     "type": "prometheus",
     "uid": "strata-prometheus"
    },
    "gridPos": {
-    "h": 8,
-    "w": 8,
-    "x": 16,
-    "y": 14
+    "h": 7,
+    "w": 24,
+    "x": 0,
+    "y": 22
    },
    "targets": [
     {
@@ -602,7 +594,7 @@
       "uid": "strata-prometheus"
      },
      "expr": "floor(DCGM_FI_DEV_CLOCKS_EVENT_REASONS / 4) % 2",
-     "legendFormat": "{{role}}: Power cap (expected at 300/350 W)",
+     "legendFormat": "{{role}} power cap",
      "refId": "A"
     },
     {
@@ -611,7 +603,7 @@
       "uid": "strata-prometheus"
      },
      "expr": "floor(DCGM_FI_DEV_CLOCKS_EVENT_REASONS / 8) % 2",
-     "legendFormat": "{{role}}: Hardware slowdown",
+     "legendFormat": "{{role}} hw slowdown",
      "refId": "B"
     },
     {
@@ -620,7 +612,7 @@
       "uid": "strata-prometheus"
      },
      "expr": "floor(DCGM_FI_DEV_CLOCKS_EVENT_REASONS / 32) % 2",
-     "legendFormat": "{{role}}: Thermal slowdown (software)",
+     "legendFormat": "{{role}} sw thermal",
      "refId": "C"
     },
     {
@@ -629,7 +621,7 @@
       "uid": "strata-prometheus"
      },
      "expr": "floor(DCGM_FI_DEV_CLOCKS_EVENT_REASONS / 64) % 2",
-     "legendFormat": "{{role}}: Thermal slowdown (hardware)",
+     "legendFormat": "{{role}} hw thermal",
      "refId": "D"
     },
     {
@@ -638,7 +630,7 @@
       "uid": "strata-prometheus"
      },
      "expr": "floor(DCGM_FI_DEV_CLOCKS_EVENT_REASONS / 128) % 2",
-     "legendFormat": "{{role}}: Power brake",
+     "legendFormat": "{{role}} power brake",
      "refId": "E"
     }
    ],
@@ -809,7 +801,7 @@
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 22
+    "y": 29
    },
    "id": 15
   },
@@ -825,7 +817,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 23
+    "y": 30
    },
    "targets": [
     {
@@ -859,7 +851,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 23
+    "y": 30
    },
    "targets": [
     {
@@ -892,7 +884,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 23
+    "y": 30
    },
    "targets": [
     {
@@ -914,7 +906,7 @@
   },
   {
    "type": "timeseries",
-   "title": "XID errors (nonzero is a fault)",
+   "title": "XID errors (0 is healthy; nonzero is a fault)",
    "id": 19,
    "datasource": {
     "type": "prometheus",
@@ -924,7 +916,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 31
+    "y": 38
    },
    "targets": [
     {
@@ -932,7 +924,7 @@
       "type": "prometheus",
       "uid": "strata-prometheus"
      },
-     "expr": "DCGM_FI_DEV_XID_ERRORS",
+     "expr": "DCGM_FI_DEV_XID_ERRORS or (0 * DCGM_FI_DEV_GPU_UTIL)",
      "legendFormat": "{{role}}",
      "refId": "A"
     }
@@ -956,7 +948,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 31
+    "y": 38
    },
    "targets": [
     {
@@ -984,7 +976,7 @@
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 39
+    "y": 46
    },
    "id": 21
   },
@@ -1000,7 +992,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 40
+    "y": 47
    },
    "targets": [
     {
@@ -1034,7 +1026,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 40
+    "y": 47
    },
    "targets": [
     {
@@ -1084,7 +1076,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 40
+    "y": 47
    },
    "targets": [
     {
@@ -1116,7 +1108,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 48
+    "y": 55
    },
    "targets": [
     {
@@ -1124,7 +1116,7 @@
       "type": "prometheus",
       "uid": "strata-prometheus"
      },
-     "expr": "1 - node_filesystem_avail_bytes{mountpoint=\"/host\"} / node_filesystem_size_bytes{mountpoint=\"/host\"}",
+     "expr": "1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}",
      "legendFormat": "/",
      "refId": "A"
     }
@@ -1150,7 +1142,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 48
+    "y": 55
    },
    "targets": [
     {
