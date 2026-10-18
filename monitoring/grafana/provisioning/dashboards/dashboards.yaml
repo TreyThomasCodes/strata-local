@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: strata-local
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /tmp/dashboards

@@ -157,6 +157,24 @@ holds runtime config and logs; neither is required to rebuild. Conversation
 parking is memory-only. Back up the volume separately to retain logs or runtime
 settings. Keep this repo and model/key backups off the rig before wiping it.
 
+## Monitoring
+
+`compose.monitoring.yaml` adds Prometheus, Grafana, DCGM exporter and node_exporter. It is
+optional and separate from the saved stack. Only Grafana publishes a port, on `127.0.0.1:3000`.
+
+Prometheus scrapes Strata's `/metrics` with the API key from the Compose secret. DCGM labels
+each GPU `primary` or `peer` from the UUIDs in `.env`. Grafana loads Strata's own dashboard
+from `vendor/Strata/docs/monitoring` and `monitoring/grafana/dashboards/rig-health.json`.
+
+Set the `MONITORING_*` and `GRAFANA_*` values from `.env.example`. `MONITORING_UID` must own the
+key file, the Grafana password file, and `$MONITORING_DATA_DIR/{prometheus,grafana}`. Then start:
+
+```sh
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d prometheus grafana dcgm-exporter node-exporter
+```
+
+Name the services. A bare `up -d` also reconciles `strata` and `power-policy`.
+
 ## Update and validate
 
 Do not run `git submodule update --remote` blindly: it leaves the tested commit.

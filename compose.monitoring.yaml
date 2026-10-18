@@ -1,0 +1,121 @@
+# Optional monitoring. Run beside compose.yaml:
+#   docker compose -f compose.yaml -f compose.monitoring.yaml up -d prometheus grafana dcgm-exporter node-exporter
+# Only Grafana publishes a port, on 127.0.0.1 by default. No service here mounts models
+# or holds SYS_ADMIN.
+
+x-hardened: &hardened
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    options: {max-size: "5m", max-file: "2"}
+
+services:
+  dcgm-exporter:
+    <<: *hardened
+    image: nvidia/dcgm-exporter:4.5.2-4.8.1-ubuntu22.04
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: utility
+      DCGM_EXPORTER_COLLECTORS: /etc/dcgm-exporter/counters.csv
+    volumes:
+      - ./monitoring/dcgm-counters.csv:/etc/dcgm-exporter/counters.csv:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids:
+                - ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
+                - ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+              capabilities: [gpu]
+
+  node-exporter:
+    <<: *hardened
+    image: prom/node-exporter:v1.9.1
+    pid: host
+    read_only: true
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+        bind: {propagation: rslave}
+
+  prometheus:
+    <<: *hardened
+    image: prom/prometheus:v3.5.0
+    user: "${MONITORING_UID:?Set MONITORING_UID in .env}"
+    read_only: true
+    depends_on: [dcgm-exporter, node-exporter]
+    environment:
+      PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
+      PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        sed -e "s/@PRIMARY_GPU_UUID@/$$PRIMARY_GPU_UUID/g" -e "s/@PEER_GPU_UUID@/$$PEER_GPU_UUID/g"
+        /etc/prometheus/prometheus.yml.tmpl > /tmp/prometheus.yml &&
+        exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus
+        --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+    secrets: [strata_api_key]
+    tmpfs: [/tmp]
+    volumes:
+      - ./monitoring/prometheus.yml.tmpl:/etc/prometheus/prometheus.yml.tmpl:ro
+      - type: bind
+        source: ${MONITORING_DATA_DIR:?Set MONITORING_DATA_DIR in .env}/prometheus
+        target: /prometheus
+        bind: {create_host_path: false}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    <<: *hardened
+    image: grafana/grafana:12.2.0
+    user: "${MONITORING_UID:?Set MONITORING_UID in .env}"
+    read_only: true
+    depends_on: [prometheus]
+    ports:
+      - "${GRAFANA_BIND_HOST:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_PATHS_PROVISIONING: /tmp/provisioning
+    secrets: [grafana_admin_password]
+    tmpfs: [/tmp]
+    # Strata's dashboard asks for a data source input. Fill it with the provisioned uid at start.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        mkdir -p /tmp/provisioning /tmp/dashboards &&
+        cp -r /deployment/provisioning/. /tmp/provisioning/ &&
+        cp /deployment/dashboards/*.json /tmp/dashboards/ &&
+        sed 's/$${DS_PROMETHEUS}/strata-prometheus/g' /deployment/strata-dashboard.json > /tmp/dashboards/strata-serving.json &&
+        exec /run.sh
+    volumes:
+      - ./monitoring/grafana/provisioning:/deployment/provisioning:ro
+      - ./monitoring/grafana/dashboards:/deployment/dashboards:ro
+      - ./vendor/Strata/docs/monitoring/grafana-strata.json:/deployment/strata-dashboard.json:ro
+      - type: bind
+        source: ${MONITORING_DATA_DIR:?Set MONITORING_DATA_DIR in .env}/grafana
+        target: /var/lib/grafana
+        bind: {create_host_path: false}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+secrets:
+  grafana_admin_password:
+    file: ${GRAFANA_ADMIN_PASSWORD_FILE:?Set GRAFANA_ADMIN_PASSWORD_FILE in .env}
