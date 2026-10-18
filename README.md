@@ -163,6 +163,15 @@ settings. Keep this repo and model/key backups off the rig before wiping it.
 exporter. It is optional and separate from the saved stack. Only Grafana publishes a port, on
 `127.0.0.1:3000`. On a headless host, reach it with `ssh -L 3000:127.0.0.1:3000 <host>`.
 
+For trusted LAN access, set `GRAFANA_BIND_HOST=0.0.0.0` in `.env`, as with `STRATA_BIND_HOST`.
+Then recreate Grafana. Login stays required, but Grafana serves plain HTTP, so the admin password
+crosses the LAN in cleartext. Use a unique password. Check a host firewall separately. Prometheus
+and the exporters stay unpublished either way.
+
+```sh
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d grafana
+```
+
 Prometheus scrapes Strata's `/metrics` with the API key from the Compose secret. DCGM and the
 NVLink exporter label each GPU `primary` or `peer` from the UUIDs in `.env`. Grafana loads
 Strata's own dashboard from `vendor/Strata/docs/monitoring` and
