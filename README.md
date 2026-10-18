@@ -159,21 +159,57 @@ settings. Keep this repo and model/key backups off the rig before wiping it.
 
 ## Monitoring
 
-`compose.monitoring.yaml` adds Prometheus, Grafana, DCGM exporter and node_exporter. It is
-optional and separate from the saved stack. Only Grafana publishes a port, on `127.0.0.1:3000`.
+`compose.monitoring.yaml` adds Prometheus, Grafana, DCGM exporter, node_exporter and an NVLink
+exporter. It is optional and separate from the saved stack. Only Grafana publishes a port, on
+`127.0.0.1:3000`. On a headless host, reach it with `ssh -L 3000:127.0.0.1:3000 <host>`.
 
-Prometheus scrapes Strata's `/metrics` with the API key from the Compose secret. DCGM labels
-each GPU `primary` or `peer` from the UUIDs in `.env`. Grafana loads Strata's own dashboard
-from `vendor/Strata/docs/monitoring` and `monitoring/grafana/dashboards/rig-health.json`.
+Prometheus scrapes Strata's `/metrics` with the API key from the Compose secret. DCGM and the
+NVLink exporter label each GPU `primary` or `peer` from the UUIDs in `.env`. Grafana loads
+Strata's own dashboard from `vendor/Strata/docs/monitoring` and
+`monitoring/grafana/dashboards/rig-health.json`.
 
 Set the `MONITORING_*` and `GRAFANA_*` values from `.env.example`. `MONITORING_UID` must own the
 key file, the Grafana password file, and `$MONITORING_DATA_DIR/{prometheus,grafana}`. Then start:
 
 ```sh
-docker compose -f compose.yaml -f compose.monitoring.yaml up -d prometheus grafana dcgm-exporter node-exporter
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d prometheus grafana dcgm-exporter nvlink-exporter node-exporter
 ```
 
 Name the services. A bare `up -d` also reconciles `strata` and `power-policy`.
+
+### Memory junction temperature
+
+NVML and DCGM report N/A for GDDR6X memory temperature on RTX 3090s. The `memtemp` profile reads
+it from one GPU register instead. It is off by default.
+
+The `memtemp-exporter` service runs as uid 0 with no capabilities and no published port. It binds
+only the two `resource0` files under `/sys/bus/pci/devices/` read-only, maps one page read-only,
+and never writes. It drops readings outside 10-125 C and sets `gpu_memory_junction_read_ok` to 0.
+
+The register offset comes from community reverse engineering. NVIDIA does not support this read.
+A one-shot read and one 20 s load test on this rig showed plausible values that tracked load. Long
+sustained runs are untested.
+
+Set `PRIMARY_PCI_BUS_ID` and `PEER_PCI_BUS_ID` in `.env`. Map them from the GPU UUIDs, lowercase,
+with the leading `00000000` shortened to `0000`:
+
+```sh
+nvidia-smi --query-gpu=uuid,pci.bus_id --format=csv,noheader
+```
+
+Check one read before starting the service. Both `read_ok` values must be 1:
+
+```sh
+docker compose -f compose.yaml -f compose.monitoring.yaml --profile memtemp run --rm --no-deps memtemp-exporter /opt/strata/.venv/bin/python /deployment/memtemp-exporter.py --once
+```
+
+Then start it. Include `--profile memtemp` on every later `up -d` that should keep it:
+
+```sh
+docker compose -f compose.yaml -f compose.monitoring.yaml --profile memtemp up -d memtemp-exporter prometheus grafana
+```
+
+Prometheus and Grafana read their config at start. Restart them after a config or dashboard change.
 
 ## Update and validate
 
