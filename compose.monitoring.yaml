@@ -56,6 +56,32 @@ services:
                 - ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
               capabilities: [gpu]
 
+  memtemp-exporter:
+    <<: *hardened
+    image: strata-local:0.1.45
+    profiles: [memtemp]
+    init: true
+    read_only: true
+    user: "0"
+    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/memtemp-exporter.py"]
+    volumes:
+      - ./docker/memtemp-exporter.py:/deployment/memtemp-exporter.py:ro
+      - type: bind
+        source: /sys/bus/pci/devices/${PRIMARY_PCI_BUS_ID:-unset}/resource0
+        target: /pci/primary/resource0
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: /sys/bus/pci/devices/${PEER_PCI_BUS_ID:-unset}/resource0
+        target: /pci/peer/resource0
+        read_only: true
+        bind: {create_host_path: false}
+    healthcheck:
+      test: ["CMD", "/opt/strata/.venv/bin/python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9103/metrics', timeout=10)"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+
   node-exporter:
     <<: *hardened
     image: prom/node-exporter:v1.9.1

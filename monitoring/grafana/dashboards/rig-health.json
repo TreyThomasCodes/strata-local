@@ -477,7 +477,7 @@
   },
   {
    "type": "timeseries",
-   "title": "GPU temperature",
+   "title": "GPU temperature (memory junction needs the memtemp profile)",
    "id": 11,
    "datasource": {
     "type": "prometheus",
@@ -496,8 +496,17 @@
       "uid": "strata-prometheus"
      },
      "expr": "DCGM_FI_DEV_GPU_TEMP",
-     "legendFormat": "{{role}}",
+     "legendFormat": "{{role}} core",
      "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "strata-prometheus"
+     },
+     "expr": "gpu_memory_junction_celsius",
+     "legendFormat": "{{role}} memory junction",
+     "refId": "B"
     }
    ],
    "fieldConfig": {

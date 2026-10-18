@@ -72,3 +72,47 @@ class NvlinkExporterTests(unittest.TestCase):
         self.assertIn('role="peer"', out)
         self.assertNotIn('GPU-', out)
         self.assertEqual(out.count('role='), 3)
+
+
+class MemtempExporterTests(unittest.TestCase):
+    def load(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('memtemp_exporter', ROOT / 'docker' / 'memtemp-exporter.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def fake_bar(self, tmp, raw):
+        import struct
+        path = Path(tmp) / 'resource0'
+        data = bytearray(0xE000 + 4096)
+        struct.pack_into('<I', data, 0xE000 + 0x2A8, raw)
+        path.write_bytes(bytes(data))
+        return str(path)
+
+    def test_decodes_plausible_value(self):
+        import tempfile
+        mod = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(mod.read_temp(self.fake_bar(tmp, 0x5A0 | 0xF000)), 45.0)
+
+    def test_rejects_implausible_values(self):
+        import tempfile
+        mod = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(mod.read_temp(self.fake_bar(tmp, 0)))
+            self.assertIsNone(mod.read_temp(self.fake_bar(tmp, 0xFFF)))
+
+    def test_failed_read_has_no_sample(self):
+        out = self.load().render({'primary': 61.5, 'peer': None})
+        self.assertIn('gpu_memory_junction_celsius{role="primary"} 61.5', out)
+        self.assertNotIn('gpu_memory_junction_celsius{role="peer"}', out)
+        self.assertIn('gpu_memory_junction_read_ok{role="peer"} 0', out)
+
+    def test_service_is_read_only_and_opt_in(self):
+        compose = (ROOT / 'compose.monitoring.yaml').read_text()
+        block = compose.split('  memtemp-exporter:')[1].split('\n  node-exporter:')[0]
+        self.assertIn('profiles: [memtemp]', block)
+        self.assertNotIn('cap_add', block)
+        self.assertNotIn('ports:', block)
+        self.assertEqual(block.count('read_only: true'), 3)
