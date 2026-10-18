@@ -48,3 +48,27 @@ class MonitoringTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NvlinkExporterTests(unittest.TestCase):
+    def load(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('nvlink_exporter', ROOT / 'docker' / 'nvlink-exporter.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_parse_and_render_label_roles_and_drop_unknown_gpus(self):
+        mod = self.load()
+        text = ('GPU 0: NVIDIA GeForce RTX 3090 (UUID: GPU-aaa)\n'
+                '\t Link 0: Data Tx: 10 KiB\n\t Link 0: Data Rx: 4 KiB\n'
+                'GPU 1: NVIDIA GeForce RTX 3090 (UUID: GPU-bbb)\n'
+                '\t Link 0: Data Tx: 4 KiB\n'
+                'GPU 2: NVIDIA GeForce RTX 3090 (UUID: GPU-ccc)\n'
+                '\t Link 0: Data Tx: 1 KiB\n')
+        out = mod.render(mod.parse(text), {'GPU-aaa': 'primary', 'GPU-bbb': 'peer'})
+        self.assertIn('nvlink_data_bytes_total{role="primary",link="0",direction="tx"} 10240', out)
+        self.assertIn('nvlink_data_bytes_total{role="primary",link="0",direction="rx"} 4096', out)
+        self.assertIn('role="peer"', out)
+        self.assertNotIn('GPU-', out)
+        self.assertEqual(out.count('role='), 3)

@@ -1,5 +1,5 @@
 # Optional monitoring. Run beside compose.yaml:
-#   docker compose -f compose.yaml -f compose.monitoring.yaml up -d prometheus grafana dcgm-exporter node-exporter
+#   docker compose -f compose.yaml -f compose.monitoring.yaml up -d prometheus grafana dcgm-exporter nvlink-exporter node-exporter
 # Only Grafana publishes a port, on 127.0.0.1 by default. No service here mounts models
 # or holds SYS_ADMIN.
 
@@ -19,6 +19,33 @@ services:
       DCGM_EXPORTER_COLLECTORS: /etc/dcgm-exporter/counters.csv
     volumes:
       - ./monitoring/dcgm-counters.csv:/etc/dcgm-exporter/counters.csv:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids:
+                - ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
+                - ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+              capabilities: [gpu]
+
+  nvlink-exporter:
+    <<: *hardened
+    image: strata-local:0.1.45
+    init: true
+    read_only: true
+    environment:
+      PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
+      PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+      NVIDIA_DRIVER_CAPABILITIES: utility
+    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/nvlink-exporter.py"]
+    volumes:
+      - ./docker/nvlink-exporter.py:/deployment/nvlink-exporter.py:ro
+    healthcheck:
+      test: ["CMD", "/opt/strata/.venv/bin/python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9102/metrics', timeout=10)"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
     deploy:
       resources:
         reservations:
@@ -49,7 +76,7 @@ services:
     image: prom/prometheus:v3.5.0
     user: "${MONITORING_UID:?Set MONITORING_UID in .env}"
     read_only: true
-    depends_on: [dcgm-exporter, node-exporter]
+    depends_on: [dcgm-exporter, node-exporter, nvlink-exporter]
     environment:
       PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
       PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}

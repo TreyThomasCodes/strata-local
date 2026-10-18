@@ -694,7 +694,7 @@
   },
   {
    "type": "timeseries",
-   "title": "Memory controller busy",
+   "title": "NVLink traffic (all links)",
    "id": 18,
    "datasource": {
     "type": "prometheus",
@@ -712,16 +712,14 @@
       "type": "prometheus",
       "uid": "strata-prometheus"
      },
-     "expr": "DCGM_FI_DEV_MEM_COPY_UTIL",
-     "legendFormat": "{{role}}",
+     "expr": "sum by (role, direction) (rate(nvlink_data_bytes_total[1m]))",
+     "legendFormat": "{{role}} {{direction}}",
      "refId": "A"
     }
    ],
    "fieldConfig": {
     "defaults": {
-     "unit": "percent",
-     "min": 0,
-     "max": 100
+     "unit": "Bps"
     },
     "overrides": []
    }
