@@ -164,6 +164,33 @@ CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
 
+### v0.1.45 attention-only trial (2026-10-17)
+
+The operator requested a trial of `STRATA_ATTN_DAILY=1` only. Four fresh engine
+boots ran off/on/on/off with unchanged peer, two-slot and batch-MTP settings.
+Each boot ran three rounds of story, code and analysis prompts with about 30K
+input tokens and 256 output tokens per request. Requests were sequential,
+greedy and thinking-off. Only the server was recreated. Power-policy stayed up.
+
+| Workload | Off median tok/s | On median tok/s | Change |
+| --- | --- | --- | --- |
+| Story | 89.45 | 93.05 | +4.0% |
+| Code | 111.45 | 116.95 | +4.9% |
+| Analysis | 96.25 | 100.70 | +4.6% |
+
+Each median covers six requests across two boots. All corresponding output
+texts matched across the four boots. Engine timings supplied generation speed.
+Runtime JSON SHA-256 matched across all boots. The candidate engine process
+contained the switch. Both services were healthy after restoring the baseline,
+and the power-policy readback check passed. The operator then approved keeping
+the switch. `compose.yaml` sets `STRATA_ATTN_DAILY=1` in the server environment.
+No other tuning switch changed.
+
+This small screen did not test concurrent clients, long recall, sustained load,
+full quality or prompt-processing gains. It did not collect thermal telemetry.
+Temporary scripts and results are in `/tmp/strata-attn-trial/`; they are not
+durable evidence or repository artifacts.
+
 ### v0.1.45 upgrade (2026-10-17)
 
 The exact source pin is `477ac13cbe8e582c20484871ce459d20d82df09d`.

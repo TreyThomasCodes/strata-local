@@ -65,6 +65,7 @@ services:
       PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
       PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      STRATA_ATTN_DAILY: "1"
     entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/entrypoint.py"]
     secrets: [strata_api_key]
     volumes:
