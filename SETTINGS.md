@@ -143,9 +143,9 @@ The older performance and quality matrices ran with parking disabled.
 
 ## Build and version
 
-Strata v0.1.44.1 is pinned. The operator requested the upgrade after the release
-review. Both services use the locally built .44.1 image. The engine reports
-0.1.44.1. The peer-mode two-slot/batch-MTP baseline, all other saved engine
+Strata v0.1.45 is pinned. The operator requested the upgrade after the release
+review. Both services use the locally built .45 image. The engine reports
+0.1.45. The peer-mode two-slot/batch-MTP baseline, all other saved engine
 settings and GPU caps remain unchanged. No speed comparison was run.
 Full quality, broader concurrency and sustained-load validation remain pending.
 The earlier .43.1 comparison remains version-specific. (E20)
@@ -163,6 +163,35 @@ better model quality. All eight long-context recall checks passed. (E8)
 CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
 the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
 on the destination CPU; the source pin does not freeze base images or packages.
+
+### v0.1.45 upgrade (2026-10-17)
+
+The exact source pin is `477ac13cbe8e582c20484871ce459d20d82df09d`.
+The CUDA 13 / sm_86 / text-only image built successfully. All five deployment
+tests passed. The upstream server suite ran 848 tests with 15 skipped and no
+failures. Compose validation passed.
+
+Both services were recreated and became healthy. Health reported a loaded
+model, mandatory authentication and 262144-token context. The status endpoint
+reported engine 0.1.45 and two serving slots. Runtime JSON SHA-256 matched
+before and after the upgrade. An unauthenticated model request was refused.
+Authenticated completions, JSON metrics and Prometheus metrics passed.
+Requests used `reasoning_effort: false` and returned the expected short answers.
+The engine process preserved primary/peer UUID order. Power-policy readback
+and UUID-bound 300 W / 350 W checks passed.
+
+A/B/A conversation switching returned the same code and reused 2025 of 2032
+prompt tokens. Recall returned the correct codes for 90041-token and
+240036-token prompts. Each first ingestion reported zero cached tokens.
+A later 90K replay reused 90034 tokens. An initial 240K repeat-line estimate
+exceeded the context limit and received HTTP 400. The corrected prompt passed.
+These are repetitive-text smoke checks, not broad quality tests.
+
+The .44.1 image remains available for rollback. Models, key, mounts, binding,
+volume and saved engine settings stayed unchanged. No new optional tuning
+switches were enabled. Full quality, matched performance, broader concurrency
+and sustained-load tests were not run. Temporary records are in
+`/tmp/strata-v0145/`; they are not durable evidence or repository artifacts.
 
 ### v0.1.44.1 upgrade (2026-10-15)
 

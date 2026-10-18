@@ -8,7 +8,7 @@ startup scripts, and a pinned source submodule. Store models and secrets separat
 
 See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limits.
 
-- Strata v0.1.44.1: `296b59d2f73c8f04a805df29c2fa97655adace78`,
+- Strata v0.1.45: `477ac13cbe8e582c20484871ce459d20d82df09d`,
   from [Niko1221/Strata](https://github.com/Niko1221/Strata).
 - CUDA 13.0; sm_86 build; vision disabled.
 - Original rig: physical GPU1 primary at 300 W; physical GPU0 peer at 350 W.
@@ -24,12 +24,13 @@ See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limi
 - Authentication required, including on the default loopback binding.
 
 Original engine settings are retained except for the accepted two-slot
-concurrency and batch-MTP baseline. The source pin is v0.1.44.1. Both services
-use the locally built v0.1.44.1 image. Build, deployment tests, upstream server
+concurrency and batch-MTP baseline. The source pin is v0.1.45. Both services
+use the locally built v0.1.45 image. Build, deployment tests, upstream server
 tests, authenticated checks, cache switching and long-context recall passed.
-The recall prompts contained 90041 and 240035 tokens and reused cached prefixes.
-Runtime configuration and GPU caps stayed unchanged. Full quality, matched
-performance, cold long-context and sustained-load tests were not run for .44.1.
+The recall prompts contained 90041 and 240036 tokens, with no cached tokens on
+first ingestion. Runtime configuration and GPU caps stayed unchanged.
+Full quality, matched performance, broader concurrency and sustained-load tests
+were not run for .45.
 The following comparison describes the earlier .43.1 release.
 A fresh four-boot comparison against v0.1.41 found no material speed change
 with the current peer settings. Eight long/long/short repetitions passed across
@@ -122,7 +123,7 @@ registry dependency. Stop the old deployment before migrating: two model servers
 must not share these cards or the host port.
 
 Verify health reports `loaded: true`, `max_context: 262144`, and `api_key: true`.
-Test an authenticated completion and `/metrics`. Confirm engine version 0.1.44.1,
+Test an authenticated completion and `/metrics`. Confirm engine version 0.1.45,
 conversation cache enabled, budget 16384 MiB, and 8 parked slots. Confirm
 `/v1/status` reports `concurrency.serving: 2`; active and parked slots differ.
 Use API base URL `http://127.0.0.1:8080/v1` and model
