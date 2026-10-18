@@ -512,7 +512,29 @@
    "fieldConfig": {
     "defaults": {
      "unit": "celsius",
-     "min": 0
+     "min": 0,
+     "max": 110,
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 95
+       }
+      ]
+     },
+     "custom": {
+      "thresholdsStyle": {
+       "mode": "dashed"
+      }
+     }
     },
     "overrides": []
    }
