@@ -47,8 +47,30 @@ Limits:
   recover the original weights.
 - Upstream validated Orca IQ3_XXS on one RTX 5090 at 32K context. Peer mode,
   262K context, two-slot batching, and batch-MTP are untested with it.
-- MTP draft acceptance on Orca is unmeasured.
-- No local quality, speed, or live checks have run on this profile yet.
+- MTP draft acceptance on Orca has only the smoke sample below.
+
+### Orca first live check (2026-10-19)
+
+Shard SHA-256 matched Hugging Face. The v0.1.45 image packed 459 tensors (363
+rounded, max error 0.0144); 24 `test_iq_pack.py` tests passed. Commit `035da7f8`
+keeps IQ3_XXS PLE keys native, so this differs from upstream's 460 tensors.
+
+The server loaded in about 40 s with the saved settings unchanged. Health showed
+the Orca model, 262144 context, and `api_key: true`. Unauthenticated completion
+and `/metrics` returned 401. Runtime order was primary, peer; caps stayed 300 W
+primary / 350 W peer. The arena loaded 49.80 GiB. Primary cache held 7592
+experts / 15.39 GiB; peer held 9947 experts / 20.16 GiB. Startup free VRAM was
+451 MiB, the same low-headroom warning as IQ3_S. `/v1/status` reported
+`concurrency.serving: 2`. Idle MemAvailable after the checks was 56.4 GiB.
+
+Smoke tests passed: arithmetic, Python code, translation, a 172-token
+explanation, two-turn recall with 22 cached prompt tokens, and a correct reply
+after a client closed a stream. The engine PID and container restart count did
+not change. Decode ran 102–110 tok/s on 91–172-token outputs. Drafts accepted:
+69/69 code, 91/150 explanation, 10/21 translation.
+
+These are single short requests. They are not matched against IQ3_S and are not
+a quality, abliteration, long-context, concurrency, or sustained-load result.
 
 ## GPU topology and power
 
