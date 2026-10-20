@@ -130,6 +130,55 @@ Use API base URL `http://127.0.0.1:8080/v1` and model
 `qwen3.8-flash-next-iq3_s`.
 Check UUID-bound power caps with `nvidia-smi`.
 
+## Orca comparison profile
+
+`config/strata-orca-iq3_xxs.json` runs the abliterated Orca IQ3_XXS with the
+saved engine settings. See [SETTINGS.md](SETTINGS.md#orca-comparison-profile)
+for the rationale and limits. It needs its own shards and pack:
+
+```text
+models/Orca-IQ3_XXS/
+  Qwen3.8-Flash-Next-Uncensored-IQ3_XXS-00001-of-00002.gguf
+  Qwen3.8-Flash-Next-Uncensored-IQ3_XXS-00002-of-00002.gguf
+packs/orca-iq3_xxs/      # compatibility pack, including tokenizer/
+```
+
+The repository is gated. Accept its terms on Hugging Face and use a token that can
+read gated repos. Download both shards before packing:
+
+```sh
+. ./.env
+hf download orcarouter/Qwen3.8-Flash-Next-Uncensored-GGUF --include "*IQ3_XXS*" \
+  --local-dir "$STRATA_DATA_DIR/models/Orca-IQ3_XXS"
+```
+
+Pack with the built image. The container has no network, reads shards read-only,
+and writes only the new pack directory:
+
+```sh
+mkdir -p "$STRATA_DATA_DIR/packs/orca-iq3_xxs"
+docker run --rm --network none --user "$(id -u):$(id -g)" \
+  --entrypoint /opt/strata/.venv/bin/python \
+  -v "$STRATA_DATA_DIR/models/Orca-IQ3_XXS:/src:ro" \
+  -v "$STRATA_DATA_DIR/packs/orca-iq3_xxs:/out" \
+  strata-local:0.1.45 /opt/strata/tools/iq_pack.py \
+  --gguf /src/Qwen3.8-Flash-Next-Uncensored-IQ3_XXS-00001-of-00002.gguf \
+  --out /out --compat-bf16
+```
+
+Switch profiles by setting `STRATA_CONFIG` in `.env`, then recreate only the
+server. Power-policy and caps stay untouched. Two servers must never share the
+cards, so this replaces the running model:
+
+```sh
+docker compose config --quiet
+docker compose up -d --no-build strata
+```
+
+Remove the `STRATA_CONFIG` line and recreate the server to return to IQ3_S.
+Use model `orcarouter-qwen3.8-flash-next-uncensored-iq3_xxs` with Orca.
+Run the live checks from step 3 after each switch.
+
 ## Security and operations
 
 Configuration is public. Git excludes `.env`, secrets, models, runtime logs, and

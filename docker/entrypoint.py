@@ -12,7 +12,10 @@ def main():
     peer = os.environ['PEER_GPU_UUID']
     if not primary.startswith('GPU-') or not peer.startswith('GPU-') or primary == peer:
         raise ValueError('Configure two distinct GPU UUIDs')
-    cfg = json.loads(Path('/config/strata-iq3_s.json').read_text(encoding='utf-8'))
+    config = Path('/config/strata.json')
+    if not config.exists():  # Containers created before STRATA_CONFIG mount the old path.
+        config = Path('/config/strata-iq3_s.json')
+    cfg = json.loads(config.read_text(encoding='utf-8'))
     cfg.pop('api_key', None)
     cfg['gpu'] = 1  # Upstream server selects the engine; cfg.env sets explicit ordering.
     cfg['env'] = {'CUDA_VISIBLE_DEVICES': f'{primary},{peer}',

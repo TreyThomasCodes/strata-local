@@ -7,6 +7,8 @@ RTX 3090s. It stores deployment code, not models or secrets.
 
 - `compose.yaml` defines the server, power-policy service, GPU access, and mounts.
 - `config/strata-iq3_s.json` holds the saved engine settings and container paths.
+- `config/strata-orca-iq3_xxs.json` is the opt-in Orca comparison profile. It
+  must match the saved engine settings; `STRATA_CONFIG` selects it.
 - `SETTINGS.md` records operator rationales, test evidence, and tuning limits.
 - `docker/entrypoint.py` validates the key and GPU UUIDs, writes runtime config,
   and starts the server.

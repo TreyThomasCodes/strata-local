@@ -22,6 +22,34 @@ the existing IQ3_S artifacts; they did not establish a quantization winner.
 not a missing dependency. `BUILD_VISION=0` builds the text-only deployment.
 No local vision-on versus vision-off comparison was found.
 
+## Orca comparison profile
+
+**The Orca IQ3_XXS profile exists to see what abliteration does to a model.**
+The operator wants to compare an abliterated model with the saved IQ3_S. The
+model is `orcarouter/Qwen3.8-Flash-Next-Uncensored-GGUF`, an abliterated
+(refusal-removed) build of the same Qwen3.8-Flash-Next base. The saved IQ3_S
+remains the default. Select Orca with `STRATA_CONFIG=strata-orca-iq3_xxs.json`.
+
+[config/strata-orca-iq3_xxs.json](config/strata-orca-iq3_xxs.json) copies every
+IQ3_S engine setting. Only the pack, shards, tokenizer, and model name differ, so
+differences come from the model rather than tuning. A unit test enforces this.
+`--native` and `--ple-gguf` both name shard 1 because Orca stores its PLE table
+there. MTP reuses `mtp/rt`, built from the original model's draft head.
+
+Measured from GGUF headers: Orca experts take 49.80 GiB of RAM arena versus
+46.84 GiB for IQ3_S. Both PLE tables are 26.82 GiB IQ4_NL on disk.
+
+Limits:
+
+- Quantization confounds the comparison. IQ3_S is a GSQ-RCO quant; Orca is an
+  ordinary imatrix quant. Differences mix abliteration with quantization.
+- `iq_pack.py --compat-bf16` rounds small projections to BF16. It does not
+  recover the original weights.
+- Upstream validated Orca IQ3_XXS on one RTX 5090 at 32K context. Peer mode,
+  262K context, two-slot batching, and batch-MTP are untested with it.
+- MTP draft acceptance on Orca is unmeasured.
+- No local quality, speed, or live checks have run on this profile yet.
+
 ## GPU topology and power
 
 **The multi-GPU layout serves thermal goals, not peak throughput.** The cards are
