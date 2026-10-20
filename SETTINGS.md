@@ -72,6 +72,13 @@ not change. Decode ran 102–110 tok/s on 91–172-token outputs. Drafts accepte
 These are single short requests. They are not matched against IQ3_S and are not
 a quality, abliteration, long-context, concurrency, or sustained-load result.
 
+### Orca operator observation (2026-10-20)
+
+**Operator report, not a measured result.** In initial conversational use, Orca
+answered questions that IQ3_S had refused. It did not appear to lose any major
+intelligence. The operator did not try coding tasks; testing covered
+conversation only. No prompt set, scoring, or side-by-side record was kept.
+
 ## GPU topology and power
 
 **The multi-GPU layout serves thermal goals, not peak throughput.** The cards are
