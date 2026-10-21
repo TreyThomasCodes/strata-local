@@ -31,18 +31,19 @@ services:
 
   nvlink-exporter:
     <<: *hardened
-    image: strata-local:0.1.45
+    image: ghcr.io/niko1221/strata:0.2.2-cuda13@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503
     init: true
     read_only: true
+    tmpfs: [/data]  # The image declares a /data volume; exporters need none.
     environment:
       PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
       PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
       NVIDIA_DRIVER_CAPABILITIES: utility
-    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/nvlink-exporter.py"]
+    entrypoint: ["/opt/strata/terminal/python/bin/python3", "/deployment/nvlink-exporter.py"]
     volumes:
       - ./docker/nvlink-exporter.py:/deployment/nvlink-exporter.py:ro
     healthcheck:
-      test: ["CMD", "/opt/strata/.venv/bin/python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9102/metrics', timeout=10)"]
+      test: ["CMD", "/opt/strata/terminal/python/bin/python3", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9102/metrics', timeout=10)"]
       interval: 30s
       timeout: 15s
       retries: 3
@@ -58,12 +59,13 @@ services:
 
   memtemp-exporter:
     <<: *hardened
-    image: strata-local:0.1.45
+    image: ghcr.io/niko1221/strata:0.2.2-cuda13@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503
     profiles: [memtemp]
     init: true
     read_only: true
+    tmpfs: [/data]  # The image declares a /data volume; exporters need none.
     user: "0"
-    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/memtemp-exporter.py"]
+    entrypoint: ["/opt/strata/terminal/python/bin/python3", "/deployment/memtemp-exporter.py"]
     volumes:
       - ./docker/memtemp-exporter.py:/deployment/memtemp-exporter.py:ro
       - type: bind
@@ -77,7 +79,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     healthcheck:
-      test: ["CMD", "/opt/strata/.venv/bin/python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9103/metrics', timeout=10)"]
+      test: ["CMD", "/opt/strata/terminal/python/bin/python3", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9103/metrics', timeout=10)"]
       interval: 30s
       timeout: 15s
       retries: 3
@@ -114,7 +116,6 @@ services:
         /etc/prometheus/prometheus.yml.tmpl > /tmp/prometheus.yml &&
         exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus
         --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
-    secrets: [strata_api_key]
     tmpfs: [/tmp]
     volumes:
       - ./monitoring/prometheus.yml.tmpl:/etc/prometheus/prometheus.yml.tmpl:ro

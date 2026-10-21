@@ -1,16 +1,18 @@
 # strata-local
 
-Local-build Docker deployment for Strata on Linux with 128 GB RAM and two NVLink
-RTX 3090s. No published container images. This repo contains configuration,
-startup scripts, and a pinned source submodule. Store models and secrets separately.
+Docker deployment of upstream's prebuilt Strata image on Linux with 128 GB RAM and
+two NVLink RTX 3090s. This repo holds the engine settings, the UUID-bound GPU order,
+the power-cap service, optional monitoring, and a source submodule at the image's
+release tag. Store models separately.
 
 ## Saved configuration
 
 See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limits.
 
-- Strata v0.1.45: `477ac13cbe8e582c20484871ce459d20d82df09d`,
+- Strata v0.2.2 (engine 0.1.47): `011c9e600a93bbc9fd451c563501b5831c32bbca`,
   from [Niko1221/Strata](https://github.com/Niko1221/Strata).
-- CUDA 13.0; sm_86 build; vision disabled.
+- Image `ghcr.io/niko1221/strata:0.2.2-cuda13@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503`.
+  CUDA 13 engine package; vision not configured.
 - Original rig: physical GPU1 primary at 300 W; physical GPU0 peer at 350 W.
   Set UUIDs explicitly. Primary becomes logical CUDA0; peer becomes logical CUDA1.
 - IQ3_S; native 262144-token context; INT8 KV; 32768 resident KV tokens.
@@ -21,12 +23,17 @@ See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limi
 - Accepted concurrency baseline: `parallel: 2` in peer mode, with `--batch-mtp`.
   Batch-MTP improved two-client aggregate throughput 19% narrative / 26% code
   over plain batching in a small peer-mode screen; broad validation remains open.
-- Authentication required, including on the default loopback binding.
+- No API key. The operator serves the trusted LAN only; the server runs with
+  `--no-api-key`.
 
-Original engine settings are retained except for the accepted two-slot
-concurrency and batch-MTP baseline. The source pin is v0.1.45. Both services
-use the locally built v0.1.45 image. Build, deployment tests, upstream server
-tests, authenticated checks, cache switching and long-context recall passed.
+v0.2.2 passed live checks on 2026-10-21. A matched four-boot screen against
+v0.1.45 measured +4.6% narrative and +8.0% code solo decode, with flat recall
+and unchanged cache switching; see
+[SETTINGS.md](SETTINGS.md#matched-v0145v022-peer-screen-2026-10-21). The results
+below are for the locally built v0.1.45 image. Original engine settings are retained except for
+the accepted two-slot concurrency and batch-MTP baseline. Build, deployment tests,
+upstream server tests, authenticated checks, cache switching and long-context
+recall passed on v0.1.45.
 The recall prompts contained 90041 and 240036 tokens, with no cached tokens on
 first ingestion. Runtime configuration and GPU caps stayed unchanged.
 Full quality, matched performance, broader concurrency and sustained-load tests
@@ -39,20 +46,19 @@ approved the upgrade for reliability. Engine settings and caps stayed unchanged.
 Plain two-slot batching improved responsiveness but cost aggregate throughput.
 The subsequent batch-MTP trial recovered speed; these are separate comparisons.
 Full quality, broader concurrency and sustained-load validation remain pending.
-See SETTINGS.md for the version-specific results and limits. Builds are not
-guaranteed bit-for-bit identical: the upstream Dockerfile uses a tagged CUDA
-base and mutable dependencies. Native CPU build defaults require a rebuild on
-the destination rig.
+See SETTINGS.md for the version-specific results and limits. The image digest
+fixes the exact bytes. The engine package is built for generic AVX2 CPUs, not for
+this rig's CPU.
 
 ## Restore after a wipe
 
 ### 1. Install prerequisites and clone
 
-Install Git, Docker Engine with Compose v2, an NVIDIA driver for CUDA 13.0
-(upstream recommends >=580), and NVIDIA Container Toolkit configured for Docker.
-Verify host `nvidia-smi`. Reserve disk space for CUDA build layers, approximately
+Install Git, Docker Engine with Compose v2, an NVIDIA driver 580 or newer (the
+CUDA 13 engine package requires it), and NVIDIA Container Toolkit configured for
+Docker. Verify host `nvidia-smi`. Reserve disk space for the image, approximately
 70–120 GB of model artifacts, and backups. Read the pinned source's
-`docs/AI_SETUP.md`.
+`docs/DOCKER.md` and `docs/AI_SETUP.md`.
 
 ```sh
 git clone --recurse-submodules https://github.com/TreyThomasCodes/strata-local.git
@@ -61,12 +67,12 @@ cp .env.example .env
 nvidia-smi --query-gpu=index,uuid,power.limit --format=csv
 ```
 
-Edit `.env`. Replace both GPU placeholders with UUIDs. Set absolute data and
-API-key paths. Hardware replacement can change GPU indices and UUIDs. Use power
+Edit `.env`. Replace both GPU placeholders with UUIDs. Set the absolute data
+path. Hardware replacement can change GPU indices and UUIDs. Use power
 limits supported by the destination cards. This configuration targets two 3090s;
 it does not size hardware automatically.
 
-### 2. Restore models and key
+### 2. Restore models
 
 Restore your separate `Strata-data` backup to `STRATA_DATA_DIR`:
 
@@ -95,37 +101,25 @@ The installer can also build native tools and generate settings. This deployment
 uses `config/strata-iq3_s.json`, not the generated run configuration. Match the
 data directory to `.env`. Verify the layout above.
 
-Restore the API key from a password manager or encrypted backup. To rotate it,
-create a new key and update clients. Create a key at the default path:
-
-```sh
-install -d -m 700 /opt/ai/Strata-secrets
-(umask 077; openssl rand -hex 32 > /opt/ai/Strata-secrets/api-key)
-```
-
-Do not overwrite a restored key unless rotating it. Keep keys out of this repo,
-images, command-line arguments, and shared logs.
-
-### 3. Build and start
+### 3. Pull and start
 
 ```sh
 docker compose config --quiet
-docker compose build strata
-docker compose up -d --no-build
+docker compose pull strata
+docker compose up -d
 docker compose ps
 docker compose logs --tail=100 strata power-policy
 curl -fsS http://127.0.0.1:8080/health
 ```
 
-Both services use one locally built image. Builds download CUDA base layers and
-compiler/Python dependencies, then compile Strata locally. No Strata image
-registry dependency. Stop the old deployment before migrating: two model servers
-must not share these cards or the host port.
+Both services use the upstream image, pinned by digest. Stop the old deployment
+before migrating: two model servers must not share these cards or the host port.
 
-Verify health reports `loaded: true`, `max_context: 262144`, and `api_key: true`.
-Test an authenticated completion and `/metrics`. Confirm engine version 0.1.45,
-conversation cache enabled, budget 16384 MiB, and 8 parked slots. Confirm
-`/v1/status` reports `concurrency.serving: 2`; active and parked slots differ.
+Verify health reports `loaded: true` and `max_context: 262144`. Test a completion
+and `/metrics`. Confirm engine version 0.1.47 and the one no-key warning in the
+log. `docker compose exec strata strata components engine` must list one usable
+package. Confirm the conversation cache is enabled, budget 16384 MiB, and 8
+parked slots. Confirm `/v1/status` reports `concurrency.serving: 2`; active and parked slots differ.
 Use API base URL `http://127.0.0.1:8080/v1` and model
 `qwen3.8-flash-next-iq3_s`.
 Check UUID-bound power caps with `nvidia-smi`.
@@ -152,16 +146,17 @@ hf download orcarouter/Qwen3.8-Flash-Next-Uncensored-GGUF --include "*IQ3_XXS*" 
   --local-dir "$STRATA_DATA_DIR/models/Orca-IQ3_XXS"
 ```
 
-Pack with the built image. The container has no network, reads shards read-only,
-and writes only the new pack directory:
+Pack with the deployment image. The container has no network, reads shards
+read-only, and writes only the new pack directory:
 
 ```sh
 mkdir -p "$STRATA_DATA_DIR/packs/orca-iq3_xxs"
 docker run --rm --network none --user "$(id -u):$(id -g)" \
-  --entrypoint /opt/strata/.venv/bin/python \
+  --entrypoint /opt/strata/terminal/python/bin/python3 \
   -v "$STRATA_DATA_DIR/models/Orca-IQ3_XXS:/src:ro" \
   -v "$STRATA_DATA_DIR/packs/orca-iq3_xxs:/out" \
-  strata-local:0.1.45 /opt/strata/tools/iq_pack.py \
+  ghcr.io/niko1221/strata:0.2.2-cuda13@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503 \
+  /opt/strata/terminal/tools/iq_pack.py \
   --gguf /src/Qwen3.8-Flash-Next-Uncensored-IQ3_XXS-00001-of-00002.gguf \
   --out /out --compat-bf16
 ```
@@ -172,7 +167,7 @@ cards, so this replaces the running model:
 
 ```sh
 docker compose config --quiet
-docker compose up -d --no-build strata
+docker compose up -d strata
 ```
 
 Remove the `STRATA_CONFIG` line and recreate the server to return to IQ3_S.
@@ -186,25 +181,27 @@ backups. The example contains no real GPU UUIDs or LAN IP. Review staged files
 before every push. `.gitignore` does not scan for secrets.
 
 The default host binding is `127.0.0.1`. Set `STRATA_BIND_HOST=0.0.0.0` for a
-trusted LAN. The entrypoint rejects empty API keys. Use TLS or a secure tunnel on
-untrusted networks. Never forward the HTTP port publicly. Metrics require
-authentication; `/health` is public.
+trusted LAN. The server takes no API key, so anyone who can reach the port can
+use the model and read `/metrics`. Without a key, it answers only to IP addresses
+and the names in `STRATA_ALLOWED_HOSTS`; list the LAN names clients use in `.env`. Never forward the HTTP port publicly or tunnel
+it off the LAN; add a key first if that changes.
 
-Only the utility-only power-policy service has SYS_ADMIN. It has no network,
-model mounts, or secret mounts. It checks caps every 30 seconds and repairs
+Only the utility-only power-policy service has SYS_ADMIN. It has no network
+and no model mounts. It checks caps every 30 seconds and repairs
 resets. Stopping it leaves the current limits in place. Stop it before manual
 power experiments. The server has no SYS_ADMIN.
 
 ```sh
 docker compose stop                  # stop both services
-docker compose up -d --no-build       # restart
+docker compose up -d                  # restart
 docker compose down                  # retain named state volume and model files
 ```
 
 Avoid routine `down -v`: it deletes the state volume. The `strata-state` volume
-holds runtime config and logs; neither is required to rebuild. Conversation
+is the image's `/data`. It holds the server log and upstream's state files; none
+is required to restore. Conversation
 parking is memory-only. Back up the volume separately to retain logs or runtime
-settings. Keep this repo and model/key backups off the rig before wiping it.
+settings. Keep this repo and model backups off the rig before wiping it.
 
 ## Monitoring
 
@@ -221,13 +218,13 @@ and the exporters stay unpublished either way.
 docker compose -f compose.yaml -f compose.monitoring.yaml up -d grafana
 ```
 
-Prometheus scrapes Strata's `/metrics` with the API key from the Compose secret. DCGM and the
+Prometheus scrapes Strata's `/metrics` without a key. DCGM and the
 NVLink exporter label each GPU `primary` or `peer` from the UUIDs in `.env`. Grafana loads
 Strata's own dashboard from `vendor/Strata/docs/monitoring` and
 `monitoring/grafana/dashboards/rig-health.json`.
 
 Set the `MONITORING_*` and `GRAFANA_*` values from `.env.example`. `MONITORING_UID` must own the
-key file, the Grafana password file, and `$MONITORING_DATA_DIR/{prometheus,grafana}`. Then start:
+Grafana password file and `$MONITORING_DATA_DIR/{prometheus,grafana}`. Then start:
 
 ```sh
 docker compose -f compose.yaml -f compose.monitoring.yaml up -d prometheus grafana dcgm-exporter nvlink-exporter node-exporter
@@ -258,7 +255,7 @@ nvidia-smi --query-gpu=uuid,pci.bus_id --format=csv,noheader
 Check one read before starting the service. Both `read_ok` values must be 1:
 
 ```sh
-docker compose -f compose.yaml -f compose.monitoring.yaml --profile memtemp run --rm --no-deps memtemp-exporter /opt/strata/.venv/bin/python /deployment/memtemp-exporter.py --once
+docker compose -f compose.yaml -f compose.monitoring.yaml --profile memtemp run --rm --no-deps memtemp-exporter /opt/strata/terminal/python/bin/python3 /deployment/memtemp-exporter.py --once
 ```
 
 Then start it. Include `--profile memtemp` on every later `up -d` that should keep it:
@@ -276,8 +273,10 @@ Upstream rewrote history for v0.1.40.1. Do not apply its `git reset --hard
 origin/main` update recipe to this wrapper or its pinned submodule. Fetch and
 check out an exact release commit instead.
 
-To upgrade, select a source commit in `vendor/Strata`, build, and test quality,
-cache switching, and long-context behavior. Commit the new submodule pointer.
+To upgrade, pick an upstream release. Check out its tag in `vendor/Strata` and
+set the matching `-cuda13` image digest in both compose files. Read its release
+notes for changed defaults. Test quality, cache switching, and long-context
+behavior. Commit the submodule pointer and the digest together.
 
 ```sh
 git submodule update --init --recursive
@@ -363,8 +362,7 @@ vLLM container; it remains stopped. See
 [SETTINGS.md](SETTINGS.md#v01431-release-screen-and-promotion-2026-10-1213).
 
 The original rig's ignored `.env` sets `COMPOSE_PROJECT_NAME=strata` to retain
-the existing `strata_strata-state` volume and preserves its authenticated LAN
-binding. Docker now records this repo's `compose.yaml` as the running stack's
+the existing `strata_strata-state` volume and its LAN binding. Docker now records this repo's `compose.yaml` as the running stack's
 configuration. Run service commands from this repo, not `/opt/ai/Strata`.
 The old Compose file is retired; old images remain available for rollback.
 

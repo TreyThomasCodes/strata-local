@@ -2,7 +2,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -50,59 +49,33 @@ class DeploymentTests(unittest.TestCase):
 
         self.assertEqual(engine(orca), engine(base))
 
-    def test_empty_key_refused(self):
-        entry = load('entrypoint')
-        with patch.object(entry.Path, 'read_text', return_value=' \n'):
-            with self.assertRaisesRegex(RuntimeError, 'nonempty API key'):
-                entry.main()
-
-    def run_entrypoint(self, config_name, mounted='/config/strata.json'):
-        entry = load('entrypoint')
-        real_path = Path
-        with tempfile.TemporaryDirectory() as tmp:
-            state = real_path(tmp)
-            cfg = (ROOT / 'config' / config_name).read_text()
-
-            def path(value):
-                if value == '/var/lib/strata':
-                    return state
-                return real_path(value)
-
-            def read_text(p, **kwargs):
-                if str(p) == '/run/secrets/strata_api_key':
-                    return 'test-only-key'
-                if str(p) == mounted:
-                    return cfg
-                raise AssertionError(str(p))
-
-            def exists(p):
-                return not str(p).startswith('/config/') or str(p) == mounted
-
-            with patch.dict(os.environ, {'PRIMARY_GPU_UUID': 'GPU-primary', 'PEER_GPU_UUID': 'GPU-peer'}), \
-                    patch.object(entry, 'Path', side_effect=path), \
-                    patch.object(real_path, 'read_text', read_text), \
-                    patch.object(real_path, 'exists', exists), \
-                    patch.object(entry.os, 'chdir'), patch.object(entry.os, 'execv') as execv:
-                entry.main()
-                execv.assert_called_once()
-                self.assertEqual(os.environ['STRATA_API_KEY'], 'test-only-key')
-            return json.loads((state / 'runtime.json').read_text())
-
-    def test_entrypoint_orders_gpus_and_keeps_key_out_of_config(self):
+    def test_configs_use_the_packaged_engine_and_no_gpu_key(self):
         for name in ['strata-iq3_s.json', 'strata-orca-iq3_xxs.json']:
             with self.subTest(name):
-                runtime = self.run_entrypoint(name)
-                saved = json.loads((ROOT / 'config' / name).read_text())
-                self.assertEqual(runtime['env']['CUDA_VISIBLE_DEVICES'], 'GPU-primary,GPU-peer')
-                self.assertEqual(runtime['model_name'], saved['model_name'])
-                self.assertEqual(runtime['args'], saved['args'])
-                self.assertEqual(runtime['parallel'], 2)
-                self.assertIn('--batch-mtp', runtime['args'])
-                self.assertNotIn('test-only-key', json.dumps(runtime))
+                cfg = json.loads((ROOT / 'config' / name).read_text())
+                self.assertEqual(cfg['exe'], 'component:strata-engine')
+                self.assertNotIn('lib_dirs', cfg)
+                self.assertNotIn('gpu', cfg)  # A "gpu" entry would replace the UUID order from compose.yaml.
+                self.assertNotIn('gpu_roles', cfg)
+                self.assertTrue(cfg['log'].startswith('/data/'))
 
-    def test_entrypoint_reads_pre_profile_mount(self):
-        runtime = self.run_entrypoint('strata-iq3_s.json', mounted='/config/strata-iq3_s.json')
-        self.assertEqual(runtime['model_name'], 'qwen3.8-flash-next-iq3_s')
+    def test_compose_orders_gpus_by_uuid_and_serves_without_key(self):
+        compose = (ROOT / 'compose.yaml').read_text()
+        block = compose.split('\n  strata:\n')[1]
+        self.assertIn('CUDA_VISIBLE_DEVICES: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env},'
+                      '${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}', block)
+        self.assertIn('"--no-api-key"', block)
+        self.assertIn('STRATA_ALLOWED_HOSTS: strata,', block)  # Prometheus scrapes by service name.
+        self.assertIn('"--config", "/config/strata.json"', block)
+        self.assertNotIn('secrets', compose)
+        self.assertNotIn('STRATA_API_KEY', compose)
+        self.assertIn('${STRATA_BIND_HOST:-127.0.0.1}', compose)
+        self.assertRegex(compose, r'image: ghcr\.io/niko1221/strata:[^@\s]+@sha256:[0-9a-f]{64}')
+
+    def test_model_mounts_are_read_only(self):
+        compose = (ROOT / 'compose.yaml').read_text()
+        mount = compose.split('target: /models-data')[1].split('bind:')[0]
+        self.assertIn('read_only: true', mount)
 
     def test_power_policy_requires_distinct_gpus(self):
         policy = load('power-policy')

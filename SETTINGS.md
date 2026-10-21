@@ -4,7 +4,7 @@ This configuration targets the original rig: Linux, Ryzen 7 5800X, 128 GB RAM,
 and two NVLink RTX 3090s with 24 GB VRAM each. It is not a hardware-sizing preset.
 
 Engine settings live in [config/strata-iq3_s.json](config/strata-iq3_s.json).
-Build and service settings live in [compose.yaml](compose.yaml). Host paths,
+Image and service settings live in [compose.yaml](compose.yaml). Host paths,
 GPU UUIDs, power caps, and port binding come from `.env`.
 
 **Basis:** operator rationale explains the choices. Local tests support specific
@@ -200,10 +200,116 @@ The older performance and quality matrices ran with parking disabled.
 
 ## Build and version
 
-Strata v0.1.45 is pinned. The operator requested the upgrade after the release
-review. Both services use the locally built .45 image. The engine reports
+### v0.2.2 migration (2026-10-21, not yet live)
+
+The branch moves to upstream v0.2.2 (engine 0.1.47) and upstream's prebuilt
+`0.2.2-cuda13` image, pinned by digest. The operator's rationale: avoid local
+machinery that duplicates upstream. The local source build, `docker/entrypoint.py`
+and the engine path plumbing are gone. The server runs upstream's
+`serve/server.py` with the saved config; the config names the engine as
+`component:strata-engine`.
+
+The operator dropped the API key: the server serves only the operator's own LAN.
+It runs with `--no-api-key`. The operator states the key was a model-proposed
+default, not an operator requirement.
+
+Engine settings, GPU UUID order, caps, mounts and binding are unchanged. The
+UUID order now comes from `CUDA_VISIBLE_DEVICES` in compose; the configs name no
+`gpu`, so the server keeps it.
+
+Upstream release notes list default changes that can move this rig's numbers:
+an sm_86 decode switch table (`STRATA_SM86_PERF=0` turns it off), a 512 MiB VRAM
+reserve on cards that drive no display, and CPU workers per physical core. The
+engine package targets generic AVX2, not the native 5800X build used before.
+Upstream reports identical answers under its identity gate for the switch table.
+
+Without a key, the server answers only to IPs and allowed host names (DNS
+rebinding protection). Compose sets `STRATA_ALLOWED_HOSTS` to `strata`, for the
+Prometheus scrape, plus the `.env` names. The first live start lacked it:
+Prometheus got 403 until the names were added.
+
+### v0.2.2 first live check (2026-10-21)
+
+The operator authorized the pull and the recreate. The rig ran the Orca profile
+(`STRATA_CONFIG` in `.env`). Results:
+
+- The engine was ready about 40 s after container start. Health reported
+  `loaded: true`, `max_context: 262144`, and `api_key: false`, with the one
+  no-key warning in the log.
+- `/v1/status` reported engine 0.1.47 and `concurrency.serving: 2`. The engine ran
+  from `/opt/strata/components/engine/0.1.47-linux-x86_64-cuda-cuda13/` with the
+  saved flags plus `--batch 2`. The log confirmed peer mode, batch-MTP drafters,
+  the sm_86 switch table (8 switches), and 7 CPU workers.
+- `/metrics` returned JSON with the conversation cache enabled, a 16384 MiB budget
+  and 8 slots. Prometheus scraped Strata, DCGM, node, NVLink and memtemp as `up`.
+- Two greedy completions answered `391` (17×23) and `Paris`. The second went
+  through the LAN host name. The LAN IP and both allowed names returned 200; an
+  unknown Host returned 403.
+- The engine process saw primary then peer in `CUDA_VISIBLE_DEVICES`. The primary
+  held the expert cache (7587 slots, 15.38 GiB); the peer held 9942 experts. Caps
+  read back 300 W primary and 350 W peer.
+- The engine warned that only 449 MiB of VRAM was free at request start and
+  suggested `--vram-reserve-mib 768`. A v0.1.45 start had logged 291 MiB in the
+  same warning, so this condition predates the upgrade. The setting is unchanged;
+  a reserve change needs operator review.
+
+Not run in this check: quality, cache switching, long-context recall, speed
+comparison, sustained load. The matched screen below covers some of these.
+
+### Matched v0.1.45/v0.2.2 peer screen (2026-10-21)
+
+The operator authorized the screen after promotion. Four fresh boots ran
+.45 → 0.2.2 → 0.2.2 → .45 on loopback 8081 with the IQ3_S profile. The baseline
+was the `strata-local:0.1.45` image with the previous deployment (commit
+`b43e781`: `entrypoint.py`, API key). The candidate was this deployment. Engine
+settings, UUID order and caps were the same in both. Production was stopped
+during the screen and restored to the `.env` profile afterward. (E21)
+
+| Metric | v0.1.45 | v0.2.2 | Change |
+| --- | ---: | ---: | ---: |
+| Solo narrative, tok/s | 119.72 | 125.27 | +4.6% |
+| Solo code, tok/s | 129.56 | 139.88 | +8.0% |
+| Two-client narrative aggregate, tok/s | 137.54 | 141.11 | +2.6% |
+| Two-client code aggregate, tok/s | 142.70 | 144.53 | +1.3% |
+| Cold 90K recall wall, s | 33.99 | 34.11 | +0.4% |
+| Cold 240K recall wall, s | 102.22 | 102.62 | +0.4% |
+| Replayed 90K recall wall, s | 1.22 | 1.18 | Small sample |
+| Replayed 240K recall wall, s | 2.53 | 2.49 | Small sample |
+
+Each boot/shape used two warmup and four scored solo streams, plus one warmup
+and three scored pairs. Output caps were 512 tokens, .6/.95/top_k20/min_p0,
+thinking off. The table uses client timing. Both v0.2.2 boots beat both v0.1.45
+boots in solo decode for each shape. Solo code varied most across boots
+(126.8–142.6 tok/s). Pair gains are within boot-to-boot spread.
+
+- All four arms completed 44 requests with no container restart. The engine
+  process saw primary then peer on every boot. Batch-MTP and two slots were active.
+- All cold 90K/240K recalls (89957 and 239763 prompt tokens) and replays
+  returned the exact code. Cold requests had no cached tokens; replays did.
+- A → B → A cache switching restored 1978 cached tokens on every boot.
+  Cancellation isolation and post-cancel arithmetic passed.
+- Short requests beside two cold 90K ingestions took 2.6–3.2 s, except one
+  .45 repetition at 73.9 s. Admission delay remains variable; no fairness
+  change is claimed.
+- The candidate primary held 7577 experts / 14717 MiB versus 7583 / 14728 MiB.
+  Startup free VRAM was 443 versus 445 MiB. The low-headroom warning is unchanged.
+- Core peaks rose with boot order: primary 81/82/83/84 C, peer 76/79/81/82 C.
+  The primary logged software thermal-slowdown samples on every boot (3, 1, 1, 4),
+  with none on the peer and no hardware slowdown. The available RAM floor was
+  44.88 GiB. Caps stayed at 300 W primary and 350 W peer; no safety guard triggered.
+
+Limits: two boots per version, fixed ABBA order, synthetic fixtures regenerated
+for this screen (not the E20 documents), small sampled decode, IQ3_S only. Not
+run: full quality and thinking tests, tool/Responses smoke, 240K concurrency,
+forced cache eviction, stall recovery, hour-scale soak. The Orca profile was not
+timed.
+
+### v0.1.45 pin (2026-10-17)
+
+Strata v0.1.45 was pinned. The operator requested the upgrade after the release
+review. Both services used the locally built .45 image. The engine reported
 0.1.45. The peer-mode two-slot/batch-MTP baseline, all other saved engine
-settings and GPU caps remain unchanged. No speed comparison was run.
+settings and GPU caps stayed unchanged. No speed comparison was run.
 Full quality, broader concurrency and sustained-load validation remain pending.
 The earlier .43.1 comparison remains version-specific. (E20)
 
@@ -217,9 +323,9 @@ v0.1.38 baseline. Cold 240K prefill measured 2308.1 versus 1967.0 tok/s. The
 thinking-off quality screen scored 64/75 versus 63/75; one case does not prove
 better model quality. All eight long-context recall checks passed. (E8)
 
-CUDA 13.0, sm_86, and native CPU defaults match the tested build. sm_86 targets
-the RTX 3090 architecture. No compiler-tuning comparison was recorded. Rebuild
-on the destination CPU; the source pin does not freeze base images or packages.
+Through v0.1.45: CUDA 13.0, sm_86, and native CPU defaults matched the tested
+build. sm_86 targets the RTX 3090 architecture. No compiler-tuning comparison
+was recorded.
 
 ### v0.1.45 attention-only trial (2026-10-17)
 
@@ -1010,14 +1116,15 @@ in scope. Clean-machine, broad quality, long-context reasoning, agent workflows,
 broader multi-client and
 sustained-load tests for the current pin remain open.
 
-Authentication, loopback binding, read-only model mounts, and the isolated
-power-policy service are deployment safeguards, not performance tuning. See
+Loopback default binding, read-only model mounts, and the isolated power-policy
+service are deployment safeguards, not performance tuning. From v0.2.2 the server
+takes no API key; the operator limits it to the trusted LAN. See
 [README.md](README.md#security-and-operations) for operation and recovery.
 
 ## Evidence records
 
 E1–E8 live under `/opt/ai/Strata/bench/results/` on the original rig. E9–E10 and
-E12–E15 and E17–E20 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
+E12–E15 and E17–E21 live under `/opt/ai/Strata-backups/evaluations/`; E11 and E16 are under
 `/opt/ai/Strata-backups/`. They are not included in this repo. The summaries
 above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unless marked otherwise.
 
@@ -1043,6 +1150,7 @@ above omit private GPU UUIDs and LAN addresses. Earlier tests used v0.1.38 unles
 | E18 | `20261008-131908-peer-prefill-sweep-captured/ANALYSIS.md` | Matched auto/4096/2048 chunks; short TTFT gains, cold-ingestion losses, peer thermal limiting, correctness and auto restoration. Excluded first attempt linked in `excluded-attempt-path.txt`. |
 | E19 | `20261008-143221-peer-decode-share-sweep/ANALYSIS.md` | Matched 0.25/0.5/1.0 decode shares; established-stream/90K overlap, event gaps, ingestion/progress tradeoff, correctness and default restoration. |
 | E20 | `20261012-151202-v0431-peer-upgrade/ANALYSIS.md` | CUDA build/server tests, matched .41/.43.1 peer screen, long recall/concurrency/tool checks and approved .43.1 promotion. |
+| E21 | `20261021-182131-v022-peer-upgrade/screen.py`, `summary.json` | Four-boot .45/0.2.2 peer screen; decode gains, flat recall, cache switching, cancellation, GPU order, thermals and production restore. |
 
 The operator supplied the model, KV precision, vision, parking, and thermal
 rationales. The operator confirmed MTP4 was inherited. Automatic cache/prefill

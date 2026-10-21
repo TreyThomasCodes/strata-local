@@ -19,10 +19,9 @@ class MonitoringTests(unittest.TestCase):
         self.assertNotIn('STRATA_DATA_DIR', self.compose)
         self.assertNotIn('privileged', self.compose)
 
-    def test_key_comes_from_secret_files_only(self):
+    def test_grafana_password_comes_from_a_secret_file(self):
         tmpl = (ROOT / 'monitoring/prometheus.yml.tmpl').read_text()
-        self.assertIn('credentials_file: /run/secrets/strata_api_key', tmpl)
-        self.assertNotRegex(tmpl, r'(?m)^\s*credentials:')
+        self.assertNotIn('authorization', tmpl)  # Strata serves the trusted LAN without a key.
         self.assertIn('GF_SECURITY_ADMIN_PASSWORD__FILE', self.compose)
         self.assertNotRegex(self.compose, r'GF_SECURITY_ADMIN_PASSWORD:')
 

@@ -1,12 +1,8 @@
 name: strata-local
 
+# Upstream's prebuilt CUDA 13 image, pinned by digest. It matches the vendor/Strata pin.
 x-image: &image
-  image: strata-local:0.1.45
-  build:
-    context: ./vendor/Strata
-    args:
-      CUDA_ARCHITECTURES: "86"
-      BUILD_VISION: "0"
+  image: ghcr.io/niko1221/strata:0.2.2-cuda13@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503
 
 x-devices: &devices
   resources:
@@ -34,15 +30,16 @@ services:
     security_opt: [no-new-privileges:true]
     network_mode: none
     read_only: true
+    tmpfs: [/data]  # The image declares a /data volume; this service needs none.
     environment:
       <<: *policy
       NVIDIA_DRIVER_CAPABILITIES: utility
-    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/power-policy.py"]
+    entrypoint: ["/opt/strata/terminal/python/bin/python3", "/deployment/power-policy.py"]
     volumes:
       - ./docker/power-policy.py:/deployment/power-policy.py:ro
     deploy: *devices
     healthcheck:
-      test: ["CMD", "/opt/strata/.venv/bin/python", "/deployment/power-policy.py", "--check"]
+      test: ["CMD", "/opt/strata/terminal/python/bin/python3", "/deployment/power-policy.py", "--check"]
       interval: 10s
       timeout: 10s
       start_period: 15s
@@ -62,12 +59,19 @@ services:
     ports:
       - "${STRATA_BIND_HOST:-127.0.0.1}:${STRATA_PORT:-8080}:8080"
     environment:
-      PRIMARY_GPU_UUID: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env}
-      PEER_GPU_UUID: ${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+      # The primary is logical CUDA0; the peer is CUDA1. The configs name no "gpu", so the server keeps this order.
+      # power-policy rejects equal UUIDs before this service starts.
+      CUDA_VISIBLE_DEVICES: ${PRIMARY_GPU_UUID:?Set PRIMARY_GPU_UUID in .env},${PEER_GPU_UUID:?Set PEER_GPU_UUID in .env}
+      CUDA_DEVICE_ORDER: PCI_BUS_ID
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       STRATA_ATTN_DAILY: "1"
-    entrypoint: ["/opt/strata/.venv/bin/python", "/deployment/entrypoint.py"]
-    secrets: [strata_api_key]
+      # Without a key, the server answers only to IPs and the names listed here (DNS rebinding protection).
+      # Prometheus reaches it as "strata"; add the names LAN clients use in .env.
+      STRATA_ALLOWED_HOSTS: strata,${STRATA_ALLOWED_HOSTS:-}
+    # The trusted LAN needs no API key; --no-api-key states that, and the server logs one warning.
+    entrypoint: ["/opt/strata/terminal/python/bin/python3", "/opt/strata/terminal/serve/server.py"]
+    command: ["--engine", "strata", "--config", "/config/strata.json",
+              "--host", "0.0.0.0", "--port", "8080", "--no-api-key"]
     volumes:
       - type: bind
         source: ./config/${STRATA_CONFIG:-strata-iq3_s.json}
@@ -79,13 +83,12 @@ services:
         target: /models-data
         read_only: true
         bind: {create_host_path: false}
-      - ./docker/entrypoint.py:/deployment/entrypoint.py:ro
-      - strata-state:/var/lib/strata
+      - strata-state:/data
     ulimits:
       memlock: {soft: -1, hard: -1}
     deploy: *devices
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      test: ["CMD", "/opt/strata/terminal/python/bin/python3", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/health', timeout=8)"]
       interval: 30s
       timeout: 10s
       start_period: 10m
@@ -93,10 +96,6 @@ services:
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
-
-secrets:
-  strata_api_key:
-    file: ${STRATA_API_KEY_FILE:?Set STRATA_API_KEY_FILE in .env}
 
 volumes:
   strata-state:

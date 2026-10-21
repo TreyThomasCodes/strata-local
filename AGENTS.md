@@ -2,37 +2,40 @@
 
 ## Scope
 
-This repo wraps a pinned Strata source build for Linux, 128 GB RAM, and two NVLink
-RTX 3090s. It stores deployment code, not models or secrets.
+This repo deploys upstream's prebuilt Strata CUDA image on Linux, 128 GB RAM, and two
+NVLink RTX 3090s. It stores deployment settings, not models or secrets. Keep local code
+to what upstream lacks: UUID-bound GPU order, power caps, and the saved engine settings.
 
-- `compose.yaml` defines the server, power-policy service, GPU access, and mounts.
+- `compose.yaml` pins the image by digest and defines the server, power-policy
+  service, GPU order, and mounts. The server runs upstream's `serve/server.py`.
 - `config/strata-iq3_s.json` holds the saved engine settings and container paths.
 - `config/strata-orca-iq3_xxs.json` is the opt-in Orca comparison profile. It
   must match the saved engine settings; `STRATA_CONFIG` selects it.
 - `SETTINGS.md` records operator rationales, test evidence, and tuning limits.
-- `docker/entrypoint.py` validates the key and GPU UUIDs, writes runtime config,
-  and starts the server.
 - `docker/power-policy.py` enforces UUID-bound power caps and checks readback.
-- `tests/test_deployment.py` tests settings, key handling, GPU order, and caps.
+- `tests/test_deployment.py` tests settings, GPU order, serving flags, and caps.
 - `.env.example` documents host paths, GPU UUIDs, power limits, and port binding.
-- `vendor/Strata` is a pinned submodule. Read its `AGENTS.md` before editing it.
+- `vendor/Strata` is a pinned submodule at the image's release tag. It supplies the
+  Grafana dashboard and the source reference. Read its `AGENTS.md` before editing it.
 
 ## Change rules
 
-Keep changes scoped to the task. Preserve the source pin and saved settings unless
-the task requires an upgrade. Never run `git submodule update --remote` blindly.
-Read `vendor/Strata/docs/AI_SETUP.md` before changing build or model setup.
+Keep changes scoped to the task. Preserve the image digest, the submodule pin, and
+saved settings unless the task requires an upgrade. Move the digest and the submodule
+together. Never run `git submodule update --remote` blindly. Read
+`vendor/Strata/docs/AI_SETUP.md` and `docs/DOCKER.md` before changing image or model setup.
 
 Keep primary and peer GPUs distinct and UUID-bound. The primary maps to logical
-CUDA0; the peer maps to logical CUDA1. Default caps are 300 W and 350 W.
+CUDA0; the peer maps to logical CUDA1. `CUDA_VISIBLE_DEVICES` in `compose.yaml` sets
+the order. Keep `gpu` and `gpu_roles` out of the configs; the server would replace
+that order. Default caps are 300 W and 350 W.
 
-Keep authentication mandatory and the default host binding at `127.0.0.1`.
-The API key comes from the Compose secret and reaches the server through
-`STRATA_API_KEY`. Never put it in runtime JSON, image layers, command-line
-arguments, logs, or Git.
+Keep the default host binding at `127.0.0.1`. The operator serves the trusted LAN
+without an API key; the server runs with `--no-api-key`. Do not add a key back unless
+the operator asks or exposure goes beyond the LAN.
 
 Keep SYS_ADMIN confined to the utility-only power-policy service. Preserve its
-network isolation and lack of model/secret mounts. Keep model mounts read-only.
+network isolation and lack of model mounts. Keep model mounts read-only.
 
 Do not start or stop services, change GPU power limits, rotate keys, or delete
 volumes without explicit user authorization. The rig can have a running stack.
@@ -58,8 +61,8 @@ identifiers, model artifacts, logs, and backups out of commits. `.gitignore` is
 not a secret scanner.
 
 Report checks run and checks skipped. Unit tests and Compose validation do not
-prove a CUDA build or live deployment. An authorized live check must verify
-health, an authenticated completion, metrics, GPU ordering, and power caps.
+prove the image or a live deployment. An authorized live check must verify
+health, a completion, metrics, GPU ordering, and power caps.
 Upgrades also need quality, cache-switching, and long-context tests.
 
 ## Write
