@@ -247,7 +247,8 @@ The operator authorized the pull and the recreate. The rig ran the Orca profile
   The setting is unchanged; a reserve change needs operator review.
 
 `memtemp-exporter` sits behind the `memtemp` profile, so the recreate skipped it.
-It still ran the v0.2.2 image during this check.
+It ran the v0.2.2 image during this check. The operator then recreated it with
+`--profile memtemp`; it runs v0.2.3, is healthy, and Prometheus scrapes it as `up`.
 
 Not run: quality, cache switching, long-context recall, matched speed
 comparison, sustained load, and the IQ3_S profile.
