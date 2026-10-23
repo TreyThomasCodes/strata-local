@@ -9,9 +9,9 @@ release tag. Store models separately.
 
 See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limits.
 
-- Strata v0.2.2 (engine 0.1.47): `011c9e600a93bbc9fd451c563501b5831c32bbca`,
+- Strata v0.2.3 (engine 0.1.48): `5c8dd322528cc84f68f461ad54a506b9da8fa8d4`,
   from [Niko1221/Strata](https://github.com/Niko1221/Strata).
-- Image `ghcr.io/niko1221/strata:0.2.2-cuda13@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503`.
+- Image `ghcr.io/niko1221/strata:0.2.3-cuda13@sha256:d39ca9fc583c5085dc66b857fbf3b3e3a9e256f692672d4061322d3bd468433a`.
   CUDA 13 engine package; vision not configured.
 - Original rig: physical GPU1 primary at 300 W; physical GPU0 peer at 350 W.
   Set UUIDs explicitly. Primary becomes logical CUDA0; peer becomes logical CUDA1.
@@ -26,7 +26,9 @@ See [SETTINGS.md](SETTINGS.md) for the rationale, test evidence, and tuning limi
 - No API key. The operator serves the trusted LAN only; the server runs with
   `--no-api-key`.
 
-v0.2.2 passed live checks on 2026-10-21. A matched four-boot screen against
+v0.2.3 passed a first live check on 2026-10-23 with the Orca profile; see
+[SETTINGS.md](SETTINGS.md#v023-first-live-check-2026-10-23). Quality, cache-switching and
+long-context tests have not run on it. v0.2.2 passed live checks on 2026-10-21. A matched four-boot screen against
 v0.1.45 measured +4.6% narrative and +8.0% code solo decode, with flat recall
 and unchanged cache switching; see
 [SETTINGS.md](SETTINGS.md#matched-v0145v022-peer-screen-2026-10-21). The results
@@ -116,7 +118,7 @@ Both services use the upstream image, pinned by digest. Stop the old deployment
 before migrating: two model servers must not share these cards or the host port.
 
 Verify health reports `loaded: true` and `max_context: 262144`. Test a completion
-and `/metrics`. Confirm engine version 0.1.47 and the one no-key warning in the
+and `/metrics`. Confirm engine version 0.1.48 and the one no-key warning in the
 log. `docker compose exec strata strata components engine` must list one usable
 package. Confirm the conversation cache is enabled, budget 16384 MiB, and 8
 parked slots. Confirm `/v1/status` reports `concurrency.serving: 2`; active and parked slots differ.
@@ -155,7 +157,7 @@ docker run --rm --network none --user "$(id -u):$(id -g)" \
   --entrypoint /opt/strata/terminal/python/bin/python3 \
   -v "$STRATA_DATA_DIR/models/Orca-IQ3_XXS:/src:ro" \
   -v "$STRATA_DATA_DIR/packs/orca-iq3_xxs:/out" \
-  ghcr.io/niko1221/strata:0.2.2-cuda13@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503 \
+  ghcr.io/niko1221/strata:0.2.3-cuda13@sha256:d39ca9fc583c5085dc66b857fbf3b3e3a9e256f692672d4061322d3bd468433a \
   /opt/strata/terminal/tools/iq_pack.py \
   --gguf /src/Qwen3.8-Flash-Next-Uncensored-IQ3_XXS-00001-of-00002.gguf \
   --out /out --compat-bf16

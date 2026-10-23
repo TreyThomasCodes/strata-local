@@ -200,7 +200,59 @@ The older performance and quality matrices ran with parking disabled.
 
 ## Build and version
 
-### v0.2.2 migration (2026-10-21, not yet live)
+### v0.2.3 migration (2026-10-23)
+
+The branch moves to upstream v0.2.3 (engine 0.1.48) and the `0.2.3-cuda13`
+image, pinned by digest. The submodule moves to the `v0.2.3` tag with it.
+Upstream also tagged v0.2.3.1; it fixes a `setup.py` crash on the NVIDIA engine
+packages and changes no engine or server code. It has no image. The image keeps
+the v0.2.3 `setup.py`; this deployment runs `serve/server.py` with saved packs
+and does not run setup.
+
+Engine settings, GPU UUID order, caps, mounts, binding and `--no-api-key` are
+unchanged. The Grafana dashboard is unchanged upstream.
+
+Upstream changes that can touch this rig:
+
+- A new `drafting` config key (auto, mtp, dflash2, off). The configs leave it
+  unset. Upstream's table maps sm_86 to MTP, so the server keeps the saved
+  `--mtp` args.
+- An automatic conversation-cache size applies only when the size is unset.
+  The configs set `--conversation-cache-mib 16384`.
+- The server trusts the system certificate store for HTTPS downloads.
+- Upstream reports no speed claim for CUDA on sm_86 in this release.
+
+### v0.2.3 first live check (2026-10-23)
+
+The operator authorized the pull and the recreate. The rig ran the Orca profile
+(`STRATA_CONFIG` in `.env`). Results:
+
+- Health reported `loaded: true`, `max_context: 262144`, and `api_key: false`,
+  with the one no-key warning in the log.
+- `/v1/status` reported engine 0.1.48 and `concurrency.serving: 2`.
+  `strata components engine` listed one package, 0.1.48 cuda13.
+- `/metrics` reported `drafting: mtp` with no drafting note, the conversation
+  cache enabled with a 16384 MiB budget and 8 slots, and 2 batch slots.
+- The log confirmed the sm_86 switch table (8 switches), 7 CPU workers, peer
+  mode, and two batch-MTP drafters.
+- Two greedy completions answered `391` (17×23) and `Paris`. A 200-token code
+  reply decoded at 129.8 tok/s with 137/161 drafts accepted. This is one sample,
+  not a speed comparison.
+- Hosts `127.0.0.1` and `strata` returned 200; an unknown Host returned 403.
+  Prometheus scraped Strata, DCGM, node, NVLink and memtemp as `up`.
+- The engine process saw primary then peer in `CUDA_VISIBLE_DEVICES`. The primary
+  held 7587 experts / 15.38 GiB; the peer held 9942 experts / 20.15 GiB. Caps
+  read back 300 W primary and 350 W peer. No container restarts.
+- Startup free VRAM was 447 MiB, the same low-headroom warning as v0.2.2.
+  The setting is unchanged; a reserve change needs operator review.
+
+`memtemp-exporter` sits behind the `memtemp` profile, so the recreate skipped it.
+It still ran the v0.2.2 image during this check.
+
+Not run: quality, cache switching, long-context recall, matched speed
+comparison, sustained load, and the IQ3_S profile.
+
+### v0.2.2 migration (2026-10-21)
 
 The branch moves to upstream v0.2.2 (engine 0.1.47) and upstream's prebuilt
 `0.2.2-cuda13` image, pinned by digest. The operator's rationale: avoid local
